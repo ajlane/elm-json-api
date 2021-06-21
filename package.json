@@ -1,0 +1,17 @@
+{
+  "name": "elm-json-api",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "webpack",
+    "example": "node target/elm-json-api.js -o example/src -s example/api.spec.json"
+  },
+  "dependencies": {
+    "commander": "^7.2.0"
+  },
+  "devDependencies": {
+    "elm": "^0.19.1-5",
+    "elm-webpack-loader": "^8.0.0",
+    "webpack": "^5.38.1",
+    "webpack-cli": "^4.7.0"
+  }
+}
