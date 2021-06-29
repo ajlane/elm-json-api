@@ -3,7 +3,8 @@
   "version": "0.0.1",
   "scripts": {
     "build": "webpack",
-    "example": "node target/elm-json-api.js -o example/src -s example/api.spec.json"
+    "example": "node target/elm-json-api.js -o example/src -s example/api.spec.json",
+    "test": "elm-test"
   },
   "dependencies": {
     "commander": "^7.2.0"

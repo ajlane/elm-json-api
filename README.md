@@ -47,16 +47,9 @@ node elm-json-api.js --spec example.spec.json --namespace ExampleApi --out src
 ```
 
 ```elm
-import ExampleApi.CalculatorUrl
-import ExampleApi.Operation
+import ExampleApi exposing (CalculatorUrl, withCalculatorUrl, Operation, get, post)
 
-url = "http://localhost/calculator"
-
-getResult =
-    url |> CalculatorUrl.get ShowNumber ShowError Nothing
-    
-sendOperation operation =
-    url |> CalculatorUrl.post ShowNumber ShowError Nothing operation
+url = CalculatorUrl "http://localhost/calculator"
     
 type Model
     = Loading
@@ -68,12 +61,12 @@ type Msg
     | ShowNumber Int
     | ShowError Http.Error
 
-init _ = (Loading, getResult)
+init _ = (Loading, withCalculatorUrl url |> get ShowNumber ShowError)
 
 update msg result =
     case msg of
         Send operation ->
-            (Loading, sendOperation operation)
+            (Loading, withCalculatorUrl url |> post ShowNumber ShowError operation)
         ShowNumber number ->
             (Ok number, Nothing)
         ShowError err ->

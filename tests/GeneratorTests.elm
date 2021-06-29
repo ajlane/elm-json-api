@@ -94,16 +94,9 @@ suite =
     describe "generate"
         [ test "produces the right set of files" <|
             \_ ->
-                specFiles [ "Api" ] example
+                specFiles [ "MyApp", "Api" ] example
                     |> List.map (\{ path } -> path)
                     |> List.sort
                     |> Expect.equal
-                        [ "Api/AdderUrl.elm"
-                        , "Api/HealthCheck.elm"
-                        , "Api/HealthUrl.elm"
-                        , "Api/Index.elm"
-                        , "Api/IndexUrl.elm"
-                        , "Api/IntPair.elm"
-                        , "Api/MultiplierUrl.elm"
-                        ]
+                        [ "MyApp/Api.elm" ]
         ]

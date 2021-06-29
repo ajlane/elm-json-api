@@ -129,7 +129,11 @@ suite =
                         """
                         { "description" : "Test"
                         , "types" :
-                          { "SplatUrl" :
+                          { "Splat" :
+                            { "is" : "String"
+                            , "description": "A splat"
+                            }
+                          , "SplatUrl" :
                             { "is" : "Url"
                             , "description" : "A link to a splat"
                             , "methods":
@@ -143,7 +147,8 @@ suite =
                     spec =
                         { description = "Test"
                         , types =
-                            [ CustomUrl "SplatUrl"
+                            [ CustomString "Splat" { description = "A splat", minLength = Nothing, maxLength = Nothing, matches = Nothing, equals = Nothing }
+                            , CustomUrl "SplatUrl"
                                 { description = "A link to a splat"
                                 , params = []
                                 , methods =
@@ -168,7 +173,7 @@ suite =
                             , "description" : "A link to a splat"
                             , "params" :
                               { "q" : { "description" : "A query" }
-                              , "size" : { "description" : "The page size" }
+                              , "size" : { "description" : "The page size", "optional" : true }
                               }
                             }
                           }
@@ -181,8 +186,8 @@ suite =
                             [ CustomUrl "SplatUrl"
                                 { description = "A link to a splat"
                                 , params =
-                                    [ UrlParam "q" { description = "A query" }
-                                    , UrlParam "size" { description = "The page size" }
+                                    [ UrlParam "q" { description = "A query", optional = False }
+                                    , UrlParam "size" { description = "The page size", optional = True }
                                     ]
                                 , methods = defaultMethods
                                 }

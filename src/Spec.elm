@@ -271,7 +271,19 @@ customRecordDefinitionDecoder : List TypeName -> Json.Decode.Decoder CustomRecor
 customRecordDefinitionDecoder customTypeNames =
     Json.Decode.map2 CustomRecordDefinition
         (Json.Decode.field "description" Json.Decode.string)
-        (Json.Decode.field "has" (Json.Decode.dict (unnamedPropertyDecoder customTypeNames) |> Json.Decode.map (Dict.toList >> List.map nameUnnamedProperty)))
+        (Json.Decode.field "has"
+            (Json.Decode.dict (unnamedPropertyDecoder customTypeNames)
+                |> Json.Decode.andThen
+                    (\dict ->
+                        if dict |> Dict.isEmpty then
+                            Json.Decode.fail "Records must have at least one property."
+
+                        else
+                            Json.Decode.succeed dict
+                    )
+                |> Json.Decode.map (Dict.toList >> List.map nameUnnamedProperty)
+            )
+        )
 
 
 type alias CustomEnumDefinition =
@@ -382,7 +394,7 @@ type alias UrlParamName =
 
 
 type UrlParam
-    = UrlParam UrlParamName { description : String }
+    = UrlParam UrlParamName { description : String, optional : Bool }
 
 
 type alias UrlMethods =
@@ -413,10 +425,13 @@ urlMethodsDecoder customTypeNames =
         (optionalField "delete" (typeRefDecoder customTypeNames))
 
 
-urlParamDecoder : Json.Decode.Decoder { description : String }
+urlParamDecoder : Json.Decode.Decoder { description : String, optional : Bool }
 urlParamDecoder =
-    Json.Decode.map (\s -> { description = s })
+    Json.Decode.map2 (\s o -> { description = s, optional = o })
         (Json.Decode.field "description" Json.Decode.string)
+        (optionalField "optional" Json.Decode.bool
+            |> Json.Decode.map (Maybe.withDefault False)
+        )
 
 
 customUrlDefinitionDecoder : List TypeName -> Json.Decode.Decoder CustomUrlDefinition
