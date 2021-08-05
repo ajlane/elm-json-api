@@ -5,6 +5,7 @@ import Elm.CodeGen exposing (..)
 import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Range exposing (emptyRange)
+import Set exposing (Set)
 import Spec exposing (CustomFloatDefinition, CustomType(..), Property(..), Spec, TypeName, TypeRef(..))
 
 
@@ -22,8 +23,8 @@ type alias Namespace =
     List String
 
 
-propertyAnn : Spec.Property -> ( String, Elm.CodeGen.TypeAnnotation )
-propertyAnn property =
+propertyAnn : ModuleName -> Spec.Property -> ( String, Elm.CodeGen.TypeAnnotation )
+propertyAnn namespace property =
     case property of
         Spec.StringProperty propertyName stringProperty ->
             ( propertyName
@@ -85,8 +86,76 @@ propertyAnn property =
                 maybeAnn (typed customProperty.is [])
 
               else
-                typed customProperty.is []
+                fqTyped (apiModelModuleName namespace) customProperty.is []
             )
+
+
+jsonEncodeType =
+    fqTyped [ "Json", "Encode" ]
+
+
+jsonEncodeFun =
+    fqFun [ "Json", "Encode" ]
+
+
+jsonDecodeType =
+    fqTyped [ "Json", "Decode" ]
+
+
+jsonDecodeFun =
+    fqFun [ "Json", "Decode" ]
+
+
+jsonDecodeVal =
+    fqVal [ "Json", "Decode" ]
+
+
+apiModelModuleName namespace =
+    namespace ++ [ "Model" ]
+
+
+apiEncodeModuleName namespace =
+    namespace ++ [ "Encode" ]
+
+
+apiDecodeModuleName namespace =
+    namespace ++ [ "Decode" ]
+
+
+apiHttpModuleName namespace =
+    namespace ++ [ "Http" ]
+
+
+apiModelType namespace name =
+    fqTyped (apiModelModuleName namespace) name
+
+
+apiModelConstruct namespace name =
+    fqConstruct (apiModelModuleName namespace) name
+
+
+apiModelNamedPattern namespace name =
+    fqNamedPattern (apiModelModuleName namespace) name
+
+
+importApiModel : ModuleName -> Import
+importApiModel namespace =
+    importStmt (apiModelModuleName namespace) Nothing Nothing
+
+
+importApiEncode : ModuleName -> Import
+importApiEncode namespace =
+    importStmt (apiEncodeModuleName namespace) Nothing Nothing
+
+
+importApiDecode : ModuleName -> Import
+importApiDecode namespace =
+    importStmt (apiDecodeModuleName namespace) Nothing Nothing
+
+
+importApiHttp : ModuleName -> Import
+importApiHttp namespace =
+    importStmt (apiHttpModuleName namespace) Nothing Nothing
 
 
 importTime : Import
@@ -119,10 +188,10 @@ importUrlInterpolate =
     importStmt [ "Url", "Interpolate" ] Nothing Nothing
 
 
-urlParamsPatterns : TypeName -> List Spec.UrlParam -> List Pattern
-urlParamsPatterns typeName params =
+urlParamsPatterns : ModuleName -> TypeName -> List Spec.UrlParam -> List Pattern
+urlParamsPatterns namespace typeName params =
     if params |> List.isEmpty then
-        [ namedPattern typeName [ varPattern "url" ] ]
+        [ apiModelNamedPattern namespace typeName [ varPattern "url" ] ]
 
     else
         [ params
@@ -133,58 +202,58 @@ urlParamsPatterns typeName params =
                             name
                 )
             |> recordPattern
-        , namedPattern typeName [ varPattern "template" ]
+        , apiModelNamedPattern namespace typeName [ varPattern "template" ]
         ]
 
 
-typeEncoderFun : TypeRef -> Expression
-typeEncoderFun ref =
+typeEncoderFun : ModuleName -> TypeRef -> Expression
+typeEncoderFun namespace ref =
     case ref of
         CustomTypeRef name ->
-            fun ("encode" ++ name)
+            fqFun (apiEncodeModuleName namespace) (toCamelCase name)
 
         UrlTypeRef ->
-            fqFun [ "Json", "Encode" ] "string"
+            jsonEncodeFun "string"
 
         StringTypeRef ->
-            fqFun [ "Json", "Encode" ] "string"
+            jsonEncodeFun "string"
 
         IntTypeRef ->
-            fqFun [ "Json", "Encode" ] "int"
+            jsonEncodeFun "int"
 
         FloatTypeRef ->
-            fqFun [ "Json", "Encode" ] "float"
+            jsonEncodeFun "float"
 
         BoolTypeRef ->
-            fqFun [ "Json", "Encode" ] "bool"
+            jsonEncodeFun "bool"
 
         InstantTypeRef ->
-            parens (applyBinOp (fqFun [ "Time" ] "posixToMillis") composer (fqFun [ "Json", "Encode" ] "int"))
+            parens (applyBinOp (fqFun [ "Time" ] "posixToMillis") composer (jsonEncodeFun "int"))
 
 
-typeDecoderVal : TypeRef -> Expression
-typeDecoderVal ref =
+typeDecoderVal : ModuleName -> TypeRef -> Expression
+typeDecoderVal namespace ref =
     case ref of
         CustomTypeRef name ->
-            val ("decode" ++ name)
+            fqVal (apiDecodeModuleName namespace) (toCamelCase name)
 
         UrlTypeRef ->
-            fqVal [ "Json", "Decode" ] "string"
+            jsonDecodeVal "string"
 
         StringTypeRef ->
-            fqVal [ "Json", "Decode" ] "string"
+            jsonDecodeVal "string"
 
         IntTypeRef ->
-            fqVal [ "Json", "Decode" ] "int"
+            jsonDecodeVal "int"
 
         FloatTypeRef ->
-            fqVal [ "Json", "Decode" ] "float"
+            jsonDecodeVal "float"
 
         BoolTypeRef ->
-            fqVal [ "Json", "Decode" ] "bool"
+            jsonDecodeVal "bool"
 
         InstantTypeRef ->
-            parens (apply [ fqFun [ "Json", "Decode" ] "map", fqFun [ "Time" ] "millisToPosix", fqFun [ "Json", "Decode" ] "int" ])
+            parens (apply [ jsonDecodeFun "map", fqFun [ "Time" ] "millisToPosix", jsonDecodeFun "int" ])
 
 
 typeAnn : TypeRef -> TypeAnnotation
@@ -242,524 +311,828 @@ toCamelCase s =
         (s |> String.left 2 |> String.toLower) ++ (s |> String.dropLeft 2)
 
 
-specFiles : ModuleName -> Spec -> List File
-specFiles namespace spec =
-    [ { path = (namespace |> String.join "/") ++ ".elm"
-      , content =
-            file
-                (normalModule namespace [])
-                [ importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
-                ((spec.types
-                    |> List.map
-                        (\type_ ->
-                            case type_ of
-                                CustomUrl typeName typeDef ->
-                                    [ customTypeDecl
-                                        (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
-                                        (List.singleton ( typeName, [ stringAnn ] ))
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("with" ++ typeName)
-                                        (urlParamsPatterns typeName typeDef.params)
-                                        (record
-                                            ([ typeDef.methods.get |> Maybe.map (\expect -> [ ( "get", typeDecoderVal expect ) ]) |> Maybe.withDefault []
-                                             , typeDef.methods.post |> Maybe.map (\{ accept, expect } -> [ ( "post", record [ ( "accept", typeEncoderFun accept ), ( "expect", typeDecoderVal expect ) ] ) ]) |> Maybe.withDefault []
-                                             , typeDef.methods.put |> Maybe.map (\{ accept, expect } -> [ ( "put", record [ ( "accept", typeEncoderFun accept ), ( "expect", typeDecoderVal expect ) ] ) ]) |> Maybe.withDefault []
-                                             , typeDef.methods.delete |> Maybe.map (\expect -> [ ( "delete", typeDecoderVal expect ) ]) |> Maybe.withDefault []
-                                             , [ ( "headers", list [] )
-                                               , ( "url"
-                                                 , apply
-                                                    [ fqFun [ "Url", "Interpolate" ] "interpolate"
-                                                    , if typeDef.params |> List.isEmpty then
-                                                        val "url"
+modelFile namespace spec =
+    { path = (namespace |> String.join "/") ++ "/Model.elm"
+    , content =
+        file
+            (normalModule (apiModelModuleName namespace) [])
+            [ importApiModel namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            (spec.types
+                |> List.map
+                    (\type_ ->
+                        case type_ of
+                            CustomUrl typeName typeDef ->
+                                [ customTypeDecl
+                                    (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    (List.singleton ( typeName, [ stringAnn ] ))
+                                ]
 
-                                                      else
-                                                        val "template"
-                                                    , parens
-                                                        (apply
-                                                            [ fqFun [ "Dict" ] "fromList"
-                                                            , parens
-                                                                (applyBinOp
-                                                                    (list
-                                                                        (typeDef.params
-                                                                            |> List.map
-                                                                                (\param ->
-                                                                                    case param of
-                                                                                        Spec.UrlParam name paramDef ->
-                                                                                            if paramDef.optional then
-                                                                                                applyBinOp (val name) piper (apply [ fqFun [ "Maybe" ] "map", parens (lambda [ varPattern "p" ] (tuple [ string name, val "p" ])) ])
+                            CustomRecord typeName typeDef ->
+                                [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    (recordAnn
+                                        (typeDef.has |> List.map (propertyAnn namespace))
+                                    )
+                                ]
 
-                                                                                            else
-                                                                                                construct "Just" [ tuple [ string name, val name ] ]
-                                                                                )
-                                                                        )
-                                                                    )
-                                                                    piper
-                                                                    (apply [ fqFun [ "List" ] "filterMap", fun "identity" ])
-                                                                )
-                                                            ]
-                                                        )
-                                                    ]
-                                                 )
-                                               , ( "timeout", construct "Nothing" [] )
-                                               , ( "tracker", construct "Nothing" [] )
-                                               ]
-                                             ]
-                                                |> List.foldl (++) []
+                            CustomEnum typeName typeDef ->
+                                [ customTypeDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    (typeDef.oneOf
+                                        |> Dict.toList
+                                        |> List.map
+                                            (\( name, variantDefinition ) ->
+                                                ( typeName ++ name
+                                                , variantDefinition.is |> Maybe.map (\t -> [ typeAnn t ]) |> Maybe.withDefault []
+                                                )
                                             )
-                                        )
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        [ namedPattern typeName
-                                            [ if (typeDef.params |> List.length) > 1 then
-                                                varPattern "template"
+                                    )
+                                ]
 
-                                              else
-                                                varPattern "url"
-                                            ]
-                                        ]
-                                        (apply
-                                            [ fqFun [ "Json", "Encode" ] "string"
-                                            , if (typeDef.params |> List.length) > 1 then
-                                                val "template"
+                            CustomList typeName typeDef ->
+                                [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    (listAnn (typeAnn typeDef.of_))
+                                ]
 
-                                              else
-                                                val "url"
-                                            ]
-                                        )
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("decode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Decode" ] "map", construct typeName [], fqFun [ "Json", "Decode" ] "string" ])
-                                    ]
+                            CustomBool typeName typeDef ->
+                                [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    boolAnn
+                                ]
 
-                                CustomRecord typeName typeDef ->
-                                    [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                            CustomString typeName typeDef ->
+                                [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    stringAnn
+                                ]
+
+                            CustomInt typeName typeDef ->
+                                [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    intAnn
+                                ]
+
+                            CustomFloat typeName typeDef ->
+                                [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
+                                    typeName
+                                    []
+                                    floatAnn
+                                ]
+                    )
+                |> List.foldl (++) []
+            )
+            Nothing
+    }
+
+
+encodeFile namespace spec =
+    { path = (namespace |> String.join "/") ++ "/Encode.elm"
+    , content =
+        file
+            (normalModule (apiEncodeModuleName namespace) [])
+            [ importApiModel namespace, importApiEncode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            (spec.types
+                |> List.map
+                    (\type_ ->
+                        case type_ of
+                            CustomUrl typeName typeDef ->
+                                [ funDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    [ apiModelNamedPattern namespace
                                         typeName
-                                        []
-                                        (recordAnn
-                                            (typeDef.has |> List.map propertyAnn)
-                                        )
-                                    , funDecl
-                                        (emptyDocComment |> markdown ("Encodes " ++ typeName ++ " values as JSON.") |> Just)
-                                        (funAnn
-                                            (typed typeName [])
-                                            (fqTyped [ "Json", "Encode" ] "Value" [])
-                                            |> Just
-                                        )
-                                        ("encode" ++ typeName)
-                                        [ varPattern "record" ]
-                                        (apply
-                                            [ fqFun [ "Json", "Encode" ] "object"
-                                            , parens
-                                                (applyBinOp
-                                                    (list
-                                                        (typeDef.has
-                                                            |> List.map
-                                                                (\p ->
-                                                                    let
-                                                                        encodedProperty propertyName propertyDefinition encoder =
-                                                                            if propertyDefinition.optional then
-                                                                                applyBinOp (access (val "record") propertyName) piper (apply [ fqFun [ "Maybe" ] "map", lambda [ varPattern "v" ] (tuple [ string propertyName, apply [ encoder, val "v" ] ]) ])
+                                        [ if (typeDef.params |> List.length) > 1 then
+                                            varPattern "template"
 
-                                                                            else
-                                                                                construct "Just" [ parens (tuple [ string propertyName, binOpChain (access (val "record") propertyName) piper [ apply [ encoder ] ] ]) ]
-                                                                    in
-                                                                    case p of
-                                                                        CustomProperty propertyName customPropertyDefinition ->
-                                                                            encodedProperty propertyName customPropertyDefinition (typeEncoderFun (CustomTypeRef customPropertyDefinition.is))
+                                          else
+                                            varPattern "url"
+                                        ]
+                                    ]
+                                    (apply
+                                        [ jsonEncodeFun "string"
+                                        , if (typeDef.params |> List.length) > 1 then
+                                            val "template"
 
-                                                                        BoolProperty propertyName boolPropertyDefinition ->
-                                                                            encodedProperty propertyName boolPropertyDefinition (typeEncoderFun BoolTypeRef)
+                                          else
+                                            val "url"
+                                        ]
+                                    )
+                                ]
 
-                                                                        InstantProperty propertyName instantPropertyDefinition ->
-                                                                            encodedProperty propertyName instantPropertyDefinition (typeEncoderFun InstantTypeRef)
-
-                                                                        StringProperty propertyName stringPropertyDefinition ->
-                                                                            encodedProperty propertyName stringPropertyDefinition (typeEncoderFun StringTypeRef)
-
-                                                                        IntProperty propertyName intPropertyDefinition ->
-                                                                            encodedProperty propertyName intPropertyDefinition (typeEncoderFun IntTypeRef)
-
-                                                                        FloatProperty propertyName floatPropertyDefinition ->
-                                                                            encodedProperty propertyName floatPropertyDefinition (typeEncoderFun FloatTypeRef)
-
-                                                                        UrlProperty propertyName urlPropertyDefinition ->
-                                                                            encodedProperty propertyName urlPropertyDefinition (typeEncoderFun UrlTypeRef)
-                                                                )
-                                                        )
-                                                    )
-                                                    piper
-                                                    (apply [ fqFun [ "List" ] "filterMap", val "identity" ])
-                                                )
-                                            ]
-                                        )
-                                    , valDecl
-                                        (emptyDocComment |> markdown ("Decodes JSON as " ++ typeName ++ " values.") |> Just)
-                                        (fqTyped [ "Json", "Decode" ] "Decoder" [ typed typeName [] ] |> Just)
-                                        ("decode" ++ typeName)
-                                        (apply
-                                            ([ fqFun [ "Json", "Decode" ]
-                                                (if (typeDef.has |> List.length) > 1 then
-                                                    "map" ++ (typeDef.has |> List.length |> String.fromInt)
-                                                    -- TODO: Deal with records with even more properties
-
-                                                 else
-                                                    "map"
-                                                )
-                                             , construct typeName []
-                                             ]
-                                                ++ (typeDef.has
+                            CustomRecord typeName typeDef ->
+                                [ funDecl
+                                    (emptyDocComment |> markdown ("Encodes " ++ typeName ++ " values as JSON.") |> Just)
+                                    (funAnn
+                                        (apiModelType namespace typeName [])
+                                        (jsonEncodeType "Value" [])
+                                        |> Just
+                                    )
+                                    (toCamelCase typeName)
+                                    [ varPattern "value" ]
+                                    (apply
+                                        [ jsonEncodeFun "object"
+                                        , parens
+                                            (applyBinOp
+                                                (list
+                                                    (typeDef.has
                                                         |> List.map
                                                             (\p ->
                                                                 let
-                                                                    fieldDecoder name optional typeRef =
-                                                                        if optional then
-                                                                            parens
-                                                                                (binOpChain
-                                                                                    (apply [ fqFun [ "Json", "Decode" ] "field", string name, parens (apply [ fqFun [ "Json", "Decode" ] "succeed", unit ]) ])
-                                                                                    piper
-                                                                                    [ fqFun [ "Json", "Decode" ] "maybe"
-                                                                                    , apply
-                                                                                        [ fqFun [ "Json", "Decode" ] "andThen"
-                                                                                        , lambda [ varPattern "m" ]
-                                                                                            (caseExpr (val "m")
-                                                                                                [ ( namedPattern "Just" [ varPattern "_" ], applyBinOp (apply [ fqFun [ "Json", "Decode" ] "field", string name, typeDecoderVal typeRef ]) piper (apply [ fqFun [ "Json", "Decode" ] "map", construct "Just" [] ]) )
-                                                                                                , ( namedPattern "Nothing" [], apply [ fqFun [ "Json", "Decode" ] "succeed", construct "Nothing" [] ] )
-                                                                                                ]
-                                                                                            )
-                                                                                        ]
-                                                                                    ]
-                                                                                )
+                                                                    encodedProperty propertyName propertyDefinition encoder =
+                                                                        if propertyDefinition.optional then
+                                                                            applyBinOp (access (val "value") propertyName) piper (apply [ fqFun [ "Maybe" ] "map", lambda [ varPattern "v" ] (tuple [ string propertyName, apply [ encoder, val "v" ] ]) ])
 
                                                                         else
-                                                                            parens (apply [ fqFun [ "Json", "Decode" ] "field", string name, typeDecoderVal typeRef ])
+                                                                            construct "Just" [ parens (tuple [ string propertyName, binOpChain (access (val "value") propertyName) piper [ apply [ encoder ] ] ]) ]
                                                                 in
                                                                 case p of
-                                                                    StringProperty name { optional } ->
-                                                                        fieldDecoder name optional StringTypeRef
+                                                                    CustomProperty propertyName customPropertyDefinition ->
+                                                                        encodedProperty propertyName customPropertyDefinition (typeEncoderFun namespace (CustomTypeRef customPropertyDefinition.is))
 
-                                                                    BoolProperty name { optional } ->
-                                                                        fieldDecoder name optional BoolTypeRef
+                                                                    BoolProperty propertyName boolPropertyDefinition ->
+                                                                        encodedProperty propertyName boolPropertyDefinition (typeEncoderFun namespace BoolTypeRef)
 
-                                                                    InstantProperty name { optional } ->
-                                                                        fieldDecoder name optional InstantTypeRef
+                                                                    InstantProperty propertyName instantPropertyDefinition ->
+                                                                        encodedProperty propertyName instantPropertyDefinition (typeEncoderFun namespace InstantTypeRef)
 
-                                                                    IntProperty name { optional } ->
-                                                                        fieldDecoder name optional IntTypeRef
+                                                                    StringProperty propertyName stringPropertyDefinition ->
+                                                                        encodedProperty propertyName stringPropertyDefinition (typeEncoderFun namespace StringTypeRef)
 
-                                                                    FloatProperty name { optional } ->
-                                                                        fieldDecoder name optional FloatTypeRef
+                                                                    IntProperty propertyName intPropertyDefinition ->
+                                                                        encodedProperty propertyName intPropertyDefinition (typeEncoderFun namespace IntTypeRef)
 
-                                                                    UrlProperty name { optional } ->
-                                                                        fieldDecoder name optional UrlTypeRef
+                                                                    FloatProperty propertyName floatPropertyDefinition ->
+                                                                        encodedProperty propertyName floatPropertyDefinition (typeEncoderFun namespace FloatTypeRef)
 
-                                                                    CustomProperty name { optional, is } ->
-                                                                        fieldDecoder name optional (CustomTypeRef is)
+                                                                    UrlProperty propertyName urlPropertyDefinition ->
+                                                                        encodedProperty propertyName urlPropertyDefinition (typeEncoderFun namespace UrlTypeRef)
                                                             )
-                                                   )
+                                                    )
+                                                )
+                                                piper
+                                                (apply [ fqFun [ "List" ] "filterMap", val "identity" ])
                                             )
-                                        )
-                                    ]
+                                        ]
+                                    )
+                                ]
 
-                                CustomEnum typeName typeDef ->
-                                    [ customTypeDecl (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
+                            CustomEnum typeName typeDef ->
+                                [ funDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    [ varPattern "value" ]
+                                    (caseExpr (val "value")
                                         (typeDef.oneOf
                                             |> Dict.toList
                                             |> List.map
-                                                (\( name, variantDefinition ) ->
-                                                    ( typeName ++ name
-                                                    , variantDefinition.is |> Maybe.map (\t -> [ typeAnn t ]) |> Maybe.withDefault []
+                                                (\( variantName, variantDef ) ->
+                                                    ( apiModelNamedPattern namespace
+                                                        (typeName ++ variantName)
+                                                        (case variantDef.is of
+                                                            Just _ ->
+                                                                [ varPattern "v" ]
+
+                                                            Nothing ->
+                                                                []
+                                                        )
+                                                    , apply
+                                                        [ jsonEncodeFun "object"
+                                                        , list
+                                                            [ tuple
+                                                                [ string (variantName |> toCamelCase)
+                                                                , case variantDef.is of
+                                                                    Just variantType ->
+                                                                        applyBinOp (val "v") piper (typeEncoderFun namespace variantType)
+
+                                                                    Nothing ->
+                                                                        apply [ jsonEncodeFun "object", list [] ]
+                                                                ]
+                                                            ]
+                                                        ]
                                                     )
                                                 )
                                         )
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        [ varPattern "value" ]
-                                        (caseExpr (val "value")
-                                            (typeDef.oneOf
-                                                |> Dict.toList
-                                                |> List.map
-                                                    (\( variantName, variantDef ) ->
-                                                        ( namedPattern (typeName ++ variantName)
-                                                            (case variantDef.is of
-                                                                Just _ ->
-                                                                    [ varPattern "v" ]
+                                    )
+                                ]
 
-                                                                Nothing ->
-                                                                    []
-                                                            )
-                                                        , apply
-                                                            [ fqFun [ "Json", "Encode" ] "object"
-                                                            , list
-                                                                [ tuple
-                                                                    [ string (variantName |> toCamelCase)
-                                                                    , case variantDef.is of
-                                                                        Just variantType ->
-                                                                            applyBinOp (val "v") piper (typeEncoderFun variantType)
+                            CustomList typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (apply [ jsonEncodeFun "list", typeEncoderFun namespace typeDef.of_ ])
+                                ]
+
+                            CustomBool typeName typeDef ->
+                                [ funDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    [ varPattern "value" ]
+                                    (apply [ jsonEncodeFun "bool" ])
+                                ]
+
+                            CustomString typeName typeDef ->
+                                [ funDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    [ varPattern "value" ]
+                                    (apply [ jsonEncodeFun "string" ])
+                                ]
+
+                            CustomInt typeName typeDef ->
+                                [ funDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    [ varPattern "value" ]
+                                    (apply [ jsonEncodeFun "int" ])
+                                ]
+
+                            CustomFloat typeName typeDef ->
+                                [ funDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    [ varPattern "value" ]
+                                    (apply [ jsonEncodeFun "float" ])
+                                ]
+                    )
+                |> List.foldl (++) []
+            )
+            Nothing
+    }
+
+
+decodeFile namespace spec =
+    { path = (namespace |> String.join "/") ++ "/Decode.elm"
+    , content =
+        file
+            (normalModule (apiDecodeModuleName namespace) [])
+            [ importApiModel namespace, importApiDecode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            (spec.types
+                |> List.map
+                    (\type_ ->
+                        case type_ of
+                            CustomUrl typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (apply [ jsonDecodeFun "map", apiModelConstruct namespace typeName [], jsonDecodeFun "string" ])
+                                ]
+
+                            CustomRecord typeName typeDef ->
+                                [ valDecl
+                                    (emptyDocComment |> markdown ("Decodes JSON as " ++ typeName ++ " values.") |> Just)
+                                    (jsonDecodeType "Decoder" [ apiModelType namespace typeName [] ] |> Just)
+                                    (toCamelCase typeName)
+                                    (apply
+                                        ([ jsonDecodeFun
+                                            (if (typeDef.has |> List.length) > 1 then
+                                                "map" ++ (typeDef.has |> List.length |> String.fromInt)
+                                                -- TODO: Deal with records with even more properties
+
+                                             else
+                                                "map"
+                                            )
+                                         , apiModelConstruct namespace typeName []
+                                         ]
+                                            ++ (typeDef.has
+                                                    |> List.map
+                                                        (\p ->
+                                                            let
+                                                                fieldDecoder name optional typeRef =
+                                                                    if optional then
+                                                                        parens
+                                                                            (binOpChain
+                                                                                (apply [ jsonDecodeFun "field", string name, parens (apply [ jsonDecodeFun "succeed", unit ]) ])
+                                                                                piper
+                                                                                [ jsonDecodeFun "maybe"
+                                                                                , apply
+                                                                                    [ jsonDecodeFun "andThen"
+                                                                                    , lambda [ varPattern "m" ]
+                                                                                        (caseExpr (val "m")
+                                                                                            [ ( namedPattern "Just" [ varPattern "_" ], applyBinOp (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace typeRef ]) piper (apply [ jsonDecodeFun "map", construct "Just" [] ]) )
+                                                                                            , ( namedPattern "Nothing" [], apply [ jsonDecodeFun "succeed", construct "Nothing" [] ] )
+                                                                                            ]
+                                                                                        )
+                                                                                    ]
+                                                                                ]
+                                                                            )
+
+                                                                    else
+                                                                        parens (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace typeRef ])
+                                                            in
+                                                            case p of
+                                                                StringProperty name { optional } ->
+                                                                    fieldDecoder name optional StringTypeRef
+
+                                                                BoolProperty name { optional } ->
+                                                                    fieldDecoder name optional BoolTypeRef
+
+                                                                InstantProperty name { optional } ->
+                                                                    fieldDecoder name optional InstantTypeRef
+
+                                                                IntProperty name { optional } ->
+                                                                    fieldDecoder name optional IntTypeRef
+
+                                                                FloatProperty name { optional } ->
+                                                                    fieldDecoder name optional FloatTypeRef
+
+                                                                UrlProperty name { optional } ->
+                                                                    fieldDecoder name optional UrlTypeRef
+
+                                                                CustomProperty name { optional, is } ->
+                                                                    fieldDecoder name optional (CustomTypeRef is)
+                                                        )
+                                               )
+                                        )
+                                    )
+                                ]
+
+                            CustomEnum typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (applyBinOp
+                                        (apply [ jsonDecodeFun "dict", parens (apply [ jsonDecodeFun "succeed", unit ]) ])
+                                        piper
+                                        (apply
+                                            [ jsonDecodeFun "andThen"
+                                            , parens
+                                                (lambda [ varPattern "dict" ]
+                                                    (caseExpr (applyBinOp (val "dict") piper (fqFun [ "Dict" ] "keys"))
+                                                        ((typeDef.oneOf
+                                                            |> Dict.toList
+                                                            |> List.map
+                                                                (\( variantName, variantDef ) ->
+                                                                    case variantDef.is of
+                                                                        Just t ->
+                                                                            ( listPattern [ variantName |> toCamelCase |> stringPattern ], applyBinOp (apply [ jsonDecodeFun "field", string (variantName |> toCamelCase), typeDecoderVal namespace t ]) piper (apply [ jsonDecodeFun "map", apiModelConstruct namespace (typeName ++ variantName) [] ]) )
 
                                                                         Nothing ->
-                                                                            apply [ fqFun [ "Json", "Encode" ] "object", list [] ]
-                                                                    ]
-                                                                ]
-                                                            ]
+                                                                            ( listPattern [ variantName |> toCamelCase |> stringPattern ], apply [ jsonDecodeFun "succeed", apiModelConstruct namespace (typeName ++ variantName) [] ] )
+                                                                )
+                                                         )
+                                                            ++ [ ( namedPattern "_" [], apply [ jsonDecodeFun "fail", string ("Expected exactly one of: " ++ (typeDef.oneOf |> Dict.keys |> List.map toCamelCase |> String.join ", ") ++ ".") ] )
+                                                               ]
                                                         )
                                                     )
-                                            )
+                                                )
+                                            ]
                                         )
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("decode" ++ typeName)
-                                        (applyBinOp
-                                            (apply [ fqFun [ "Json", "Decode" ] "dict", parens (apply [ fqFun [ "Json", "Decode" ] "succeed", unit ]) ])
-                                            piper
-                                            (apply
-                                                [ fqFun [ "Json", "Decode" ] "andThen"
-                                                , parens
-                                                    (lambda [ varPattern "dict" ]
-                                                        (caseExpr (applyBinOp (val "dict") piper (fqFun [ "Dict" ] "keys"))
-                                                            ((typeDef.oneOf
-                                                                |> Dict.toList
-                                                                |> List.map
-                                                                    (\( variantName, variantDef ) ->
-                                                                        case variantDef.is of
-                                                                            Just t ->
-                                                                                ( listPattern [ variantName |> toCamelCase |> stringPattern ], applyBinOp (apply [ fqFun [ "Json", "Decode" ] "field", string (variantName |> toCamelCase), typeDecoderVal t ]) piper (apply [ fqFun [ "Json", "Decode" ] "map", construct (typeName ++ variantName) [] ]) )
+                                    )
+                                ]
 
-                                                                            Nothing ->
-                                                                                ( listPattern [ variantName |> toCamelCase |> stringPattern ], apply [ fqFun [ "Json", "Decode" ] "succeed", construct (typeName ++ variantName) [] ] )
-                                                                    )
-                                                             )
-                                                                ++ [ ( namedPattern "_" [], apply [ fqFun [ "Json", "Decode" ] "fail", string ("Expected exactly one of: " ++ (typeDef.oneOf |> Dict.keys |> List.map toCamelCase |> String.join ", ") ++ ".") ] )
-                                                                   ]
-                                                            )
-                                                        )
-                                                    )
-                                                ]
+                            CustomList typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    (Just (jsonDecodeType "Decoder" [ apiModelType namespace typeName [] ]))
+                                    (toCamelCase typeName)
+                                    (apply [ jsonDecodeFun "list", typeDecoderVal namespace typeDef.of_ ])
+                                ]
+
+                            CustomBool typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (apply [ jsonDecodeFun "bool" ])
+                                ]
+
+                            CustomString typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (apply [ jsonDecodeFun "string" ])
+                                ]
+
+                            CustomInt typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (apply [ jsonDecodeFun "int" ])
+                                ]
+
+                            CustomFloat typeName typeDef ->
+                                [ valDecl
+                                    Nothing
+                                    Nothing
+                                    (toCamelCase typeName)
+                                    (apply [ jsonDecodeFun "float" ])
+                                ]
+                    )
+                |> List.foldl (++) []
+            )
+            Nothing
+    }
+
+
+expectableTypes spec =
+    spec.types
+        |> List.map
+            (\type_ ->
+                case type_ of
+                    CustomUrl _ typeDef ->
+                        [ typeDef.methods.get
+                            |> Maybe.map
+                                (\expect ->
+                                    case expect of
+                                        CustomTypeRef expectTypeName ->
+                                            Just expectTypeName
+
+                                        _ ->
+                                            Nothing
+                                )
+                        , typeDef.methods.post
+                            |> Maybe.map
+                                (\{ expect } ->
+                                    case expect of
+                                        CustomTypeRef expectTypeName ->
+                                            Just expectTypeName
+
+                                        _ ->
+                                            Nothing
+                                )
+                        , typeDef.methods.put
+                            |> Maybe.map
+                                (\{ expect } ->
+                                    case expect of
+                                        CustomTypeRef expectTypeName ->
+                                            Just expectTypeName
+
+                                        _ ->
+                                            Nothing
+                                )
+                        , typeDef.methods.delete
+                            |> Maybe.map
+                                (\expect ->
+                                    case expect of
+                                        CustomTypeRef expectTypeName ->
+                                            Just expectTypeName
+
+                                        _ ->
+                                            Nothing
+                                )
+                        ]
+                            |> List.filterMap (Maybe.andThen identity)
+
+                    _ ->
+                        []
+            )
+        |> List.foldl (++) []
+        |> Set.fromList
+        |> Set.toList
+
+
+sendableTypes spec =
+    spec.types
+        |> List.map
+            (\type_ ->
+                case type_ of
+                    CustomUrl _ typeDef ->
+                        [ typeDef.methods.post
+                            |> Maybe.map
+                                (\{ accept } ->
+                                    case accept of
+                                        CustomTypeRef acceptTypeName ->
+                                            Just acceptTypeName
+
+                                        _ ->
+                                            Nothing
+                                )
+                        , typeDef.methods.put
+                            |> Maybe.map
+                                (\{ accept } ->
+                                    case accept of
+                                        CustomTypeRef acceptTypeName ->
+                                            Just acceptTypeName
+
+                                        _ ->
+                                            Nothing
+                                )
+                        ]
+                            |> List.filterMap (Maybe.andThen identity)
+
+                    _ ->
+                        []
+            )
+        |> List.foldl (++) []
+        |> Set.fromList
+        |> Set.toList
+
+
+customUrlToStringFunDecl namespace typeName typeDef =
+    funDecl
+        Nothing
+        Nothing
+        (toCamelCase typeName ++ "ToString")
+        (urlParamsPatterns namespace typeName typeDef.params)
+        (apply
+            [ fqFun [ "Url", "Interpolate" ] "interpolate"
+            , if typeDef.params |> List.isEmpty then
+                val "url"
+
+              else
+                val "template"
+            , parens
+                (if typeDef.params |> List.isEmpty then
+                    fqVal [ "Dict" ] "empty"
+
+                 else
+                    apply
+                        [ fqFun [ "Dict" ] "fromList"
+                        , parens
+                            (applyBinOp
+                                (list
+                                    (typeDef.params
+                                        |> List.map
+                                            (\param ->
+                                                case param of
+                                                    Spec.UrlParam name paramDef ->
+                                                        if paramDef.optional then
+                                                            applyBinOp (val name) piper (apply [ fqFun [ "Maybe" ] "map", parens (lambda [ varPattern "p" ] (tuple [ string name, val "p" ])) ])
+
+                                                        else
+                                                            construct "Just" [ tuple [ string name, val name ] ]
                                             )
-                                        )
-                                    ]
-
-                                CustomList typeName typeDef ->
-                                    [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
-                                        (listAnn (typeAnn typeDef.of_))
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Encode" ] "list", typeEncoderFun typeDef.of_ ])
-                                    , valDecl
-                                        Nothing
-                                        (Just (fqTyped [ "Json", "Decode" ] "Decoder" [ typed typeName [] ]))
-                                        ("decode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Decode" ] "list", typeDecoderVal typeDef.of_ ])
-                                    ]
-
-                                CustomBool typeName typeDef ->
-                                    [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
-                                        boolAnn
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        [ varPattern "value" ]
-                                        (apply [ fqFun [ "Json", "Encode" ] "bool" ])
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("decode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Decode" ] "bool" ])
-                                    ]
-
-                                CustomString typeName typeDef ->
-                                    [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
-                                        stringAnn
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        [ varPattern "value" ]
-                                        (apply [ fqFun [ "Json", "Encode" ] "string" ])
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("decode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Decode" ] "string" ])
-                                    ]
-
-                                CustomInt typeName typeDef ->
-                                    [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
-                                        intAnn
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        [ varPattern "value" ]
-                                        (apply [ fqFun [ "Json", "Encode" ] "int" ])
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("decode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Decode" ] "int" ])
-                                    ]
-
-                                CustomFloat typeName typeDef ->
-                                    [ aliasDecl (emptyDocComment |> markdown typeDef.description |> Just)
-                                        typeName
-                                        []
-                                        floatAnn
-                                    , funDecl
-                                        Nothing
-                                        Nothing
-                                        ("encode" ++ typeName)
-                                        [ varPattern "value" ]
-                                        (apply [ fqFun [ "Json", "Encode" ] "float" ])
-                                    , valDecl
-                                        Nothing
-                                        Nothing
-                                        ("decode" ++ typeName)
-                                        (apply [ fqFun [ "Json", "Decode" ] "float" ])
-                                    ]
-                        )
-                    |> List.foldl (++) []
-                 )
-                    ++ [ funDecl
-                            Nothing
-                            Nothing
-                            "headers"
-                            [ varPattern "list", varPattern "request" ]
-                            (updateRecord "request" [ ( "headers", applyBinOp (val "list") piper (apply [ fqFun [ "List" ] "map", lambda [ tuplePattern [ varPattern "k", varPattern "v" ] ] (apply [ fqFun [ "Http" ] "header", val "k", val "v" ]) ]) ) ])
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "header"
-                            [ varPattern "key", varPattern "value", varPattern "request" ]
-                            (updateRecord "request" [ ( "headers", applyBinOp (access (val "request") "headers") append (list [ apply [ fqFun [ "Http" ] "header", val "key", val "value" ] ]) ) ])
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "timeout"
-                            [ varPattern "t", varPattern "request" ]
-                            (updateRecord "request" [ ( "timeout", construct "Just" [ val "t" ] ) ])
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "noTimeout"
-                            [ varPattern "request" ]
-                            (updateRecord "request" [ ( "timeout", construct "Nothing" [] ) ])
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "tracker"
-                            [ varPattern "name", varPattern "request" ]
-                            (updateRecord "request" [ ( "tracker", construct "Just" [ val "name" ] ) ])
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "noTracker"
-                            [ varPattern "name", varPattern "request" ]
-                            (updateRecord "request" [ ( "tracker", construct "Nothing" [] ) ])
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "get"
-                            [ varPattern "ok", varPattern "err", varPattern "request" ]
-                            (letExpr [ letFunction "toMsg" [ varPattern "r" ] (caseExpr (val "r") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ fun "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ fun "err", val "value" ] ) ]) ]
-                                (apply
-                                    [ fqFun [ "Http" ] "request"
-                                    , record
-                                        [ ( "method", string "GET" )
-                                        , ( "headers", access (val "request") "headers" )
-                                        , ( "url", access (val "request") "url" )
-                                        , ( "body", apply [ fqFun [ "Http" ] "emptyBody" ] )
-                                        , ( "expect", apply [ fqFun [ "Http" ] "expectJson", val "toMsg", access (val "request") "get" ] )
-                                        , ( "timeout", access (val "request") "timeout" )
-                                        , ( "tracker", access (val "request") "tracker" )
-                                        ]
-                                    ]
+                                    )
                                 )
+                                piper
+                                (apply [ fqFun [ "List" ] "filterMap", fun "identity" ])
                             )
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "put"
-                            [ varPattern "ok", varPattern "err", varPattern "request" ]
-                            (letExpr [ letFunction "toMsg" [ varPattern "r" ] (caseExpr (val "r") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ fun "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ fun "err", val "value" ] ) ]) ]
-                                (apply
-                                    [ fqFun [ "Http" ] "request"
-                                    , record
-                                        [ ( "method", string "PUT" )
-                                        , ( "headers", access (val "request") "headers" )
-                                        , ( "url", access (val "request") "url" )
-                                        , ( "body", access (access (val "request") "put") "accept" )
-                                        , ( "expect", apply [ fqFun [ "Http" ] "expectJson", val "toMsg", access (access (val "request") "put") "expect" ] )
-                                        , ( "timeout", access (val "request") "timeout" )
-                                        , ( "tracker", access (val "request") "tracker" )
-                                        ]
-                                    ]
-                                )
-                            )
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "post"
-                            [ varPattern "ok", varPattern "err", varPattern "request" ]
-                            (letExpr [ letFunction "toMsg" [ varPattern "r" ] (caseExpr (val "r") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ fun "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ fun "err", val "value" ] ) ]) ]
-                                (apply
-                                    [ fqFun [ "Http" ] "request"
-                                    , record
-                                        [ ( "method", string "POST" )
-                                        , ( "headers", access (val "request") "headers" )
-                                        , ( "url", access (val "request") "url" )
-                                        , ( "body", access (access (val "request") "post") "accept" )
-                                        , ( "expect", apply [ fqFun [ "Http" ] "expectJson", val "toMsg", access (access (val "request") "post") "expect" ] )
-                                        , ( "timeout", access (val "request") "timeout" )
-                                        , ( "tracker", access (val "request") "tracker" )
-                                        ]
-                                    ]
-                                )
-                            )
-                       , funDecl
-                            Nothing
-                            Nothing
-                            "delete"
-                            [ varPattern "ok", varPattern "err", varPattern "request" ]
-                            (letExpr [ letFunction "toMsg" [ varPattern "r" ] (caseExpr (val "r") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ fun "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ fun "err", val "value" ] ) ]) ]
-                                (apply
-                                    [ fqFun [ "Http" ] "request"
-                                    , record
-                                        [ ( "method", string "DELETE" )
-                                        , ( "headers", access (val "request") "headers" )
-                                        , ( "url", access (val "request") "url" )
-                                        , ( "body", apply [ fqFun [ "Http" ] "emptyBody" ] )
-                                        , ( "expect", apply [ fqFun [ "Http" ] "expectJson", val "toMsg", access (val "request") "delete" ] )
-                                        , ( "timeout", access (val "request") "timeout" )
-                                        , ( "tracker", access (val "request") "tracker" )
-                                        ]
-                                    ]
-                                )
-                            )
-                       ]
+                        ]
                 )
-                Nothing
-      }
+            ]
+        )
+
+
+expectTypeFun typeRef msg =
+    case typeRef of
+        CustomTypeRef typeName ->
+            apply [ fun ("expect" ++ typeName), msg ]
+
+        UrlTypeRef ->
+            apply [ fqFun [ "Http" ] "expectJson", msg, fqFun [ "Json", "Decode" ] "string" ]
+
+        StringTypeRef ->
+            apply [ fqFun [ "Http" ] "expectJson", msg, fqFun [ "Json", "Decode" ] "string" ]
+
+        IntTypeRef ->
+            apply [ fqFun [ "Http" ] "expectJson", msg, fqFun [ "Json", "Decode" ] "int" ]
+
+        FloatTypeRef ->
+            apply [ fqFun [ "Http" ] "expectJson", msg, fqFun [ "Json", "Decode" ] "float" ]
+
+        BoolTypeRef ->
+            apply [ fqFun [ "Http" ] "expectJson", msg, fqFun [ "Json", "Decode" ] "bool" ]
+
+        InstantTypeRef ->
+            apply [ fqFun [ "Http" ] "expectJson", msg, fqFun [ "Json", "Decode" ] "string" ]
+
+
+typeBodyFun typeRef msg =
+    case typeRef of
+        CustomTypeRef typeName ->
+            binOpChain msg piper [ fun (toCamelCase typeName ++ "Body") ]
+
+        UrlTypeRef ->
+            binOpChain msg piper [ fqFun [ "Json", "Encode" ] "string", fqFun [ "Http" ] "jsonBody" ]
+
+        StringTypeRef ->
+            binOpChain msg piper [ fqFun [ "Json", "Encode" ] "string", fqFun [ "Http" ] "jsonBody" ]
+
+        IntTypeRef ->
+            binOpChain msg piper [ fqFun [ "Json", "Encode" ] "int", fqFun [ "Http" ] "jsonBody" ]
+
+        FloatTypeRef ->
+            binOpChain msg piper [ fqFun [ "Json", "Encode" ] "float", fqFun [ "Http" ] "jsonBody" ]
+
+        BoolTypeRef ->
+            binOpChain msg piper [ fqFun [ "Json", "Encode" ] "bool", fqFun [ "Http" ] "jsonBody" ]
+
+        InstantTypeRef ->
+            binOpChain msg piper [ fqFun [ "Json", "Encode" ] "string", fqFun [ "Http" ] "jsonBody" ]
+
+
+httpFile namespace spec =
+    { path = (namespace |> String.join "/") ++ "/Http.elm"
+    , content =
+        file
+            (normalModule (apiHttpModuleName namespace) [])
+            [ importApiModel namespace, importApiEncode namespace, importApiDecode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            ((spec.types
+                |> List.map
+                    (\type_ ->
+                        case type_ of
+                            CustomUrl typeName typeDef ->
+                                [ customUrlToStringFunDecl namespace typeName typeDef |> Just
+                                , typeDef.methods.get
+                                    |> Maybe.map
+                                        (\expect ->
+                                            funDecl Nothing
+                                                Nothing
+                                                ("get" ++ typeName)
+                                                (if typeDef.params |> List.isEmpty then
+                                                    [ varPattern "ok", varPattern "err", varPattern "url" ]
+
+                                                 else
+                                                    [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                )
+                                                (record
+                                                    [ ( "method", string "GET" )
+                                                    , ( "url"
+                                                      , apply
+                                                            (if typeDef.params |> List.isEmpty then
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "url" ]
+
+                                                             else
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
+                                                            )
+                                                      )
+                                                    , ( "body", fqVal [ "Http" ] "emptyBody" )
+                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
+                                                    , ( "timeout", val "Nothing" )
+                                                    , ( "tracker", val "Nothing" )
+                                                    ]
+                                                )
+                                        )
+                                , typeDef.methods.post
+                                    |> Maybe.map
+                                        (\{ accept, expect } ->
+                                            funDecl Nothing
+                                                Nothing
+                                                ("post" ++ typeName)
+                                                ([ varPattern "body" ]
+                                                    ++ (if typeDef.params |> List.isEmpty then
+                                                            [ varPattern "ok", varPattern "err", varPattern "url" ]
+
+                                                        else
+                                                            [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                       )
+                                                )
+                                                (record
+                                                    [ ( "method", string "POST" )
+                                                    , ( "url"
+                                                      , apply
+                                                            (if typeDef.params |> List.isEmpty then
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "url" ]
+
+                                                             else
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
+                                                            )
+                                                      )
+                                                    , ( "body", typeBodyFun accept (val "body") )
+                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
+                                                    , ( "timeout", val "Nothing" )
+                                                    , ( "tracker", val "Nothing" )
+                                                    ]
+                                                )
+                                        )
+                                , typeDef.methods.put
+                                    |> Maybe.map
+                                        (\{ accept, expect } ->
+                                            funDecl Nothing
+                                                Nothing
+                                                ("put" ++ typeName)
+                                                ([ varPattern "body" ]
+                                                    ++ (if typeDef.params |> List.isEmpty then
+                                                            [ varPattern "ok", varPattern "err", varPattern "url" ]
+
+                                                        else
+                                                            [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                       )
+                                                )
+                                                (record
+                                                    [ ( "method", string "PUT" )
+                                                    , ( "url"
+                                                      , apply
+                                                            (if typeDef.params |> List.isEmpty then
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "url" ]
+
+                                                             else
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
+                                                            )
+                                                      )
+                                                    , ( "body", typeBodyFun accept (val "body") )
+                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
+                                                    , ( "timeout", val "Nothing" )
+                                                    , ( "tracker", val "Nothing" )
+                                                    ]
+                                                )
+                                        )
+                                , typeDef.methods.delete
+                                    |> Maybe.map
+                                        (\expect ->
+                                            funDecl Nothing
+                                                Nothing
+                                                ("delete" ++ typeName)
+                                                (if typeDef.params |> List.isEmpty then
+                                                    [ varPattern "ok", varPattern "err", varPattern "url" ]
+
+                                                 else
+                                                    [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                )
+                                                (record
+                                                    [ ( "method", string "DELETE" )
+                                                    , ( "url"
+                                                      , apply
+                                                            (if typeDef.params |> List.isEmpty then
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "url" ]
+
+                                                             else
+                                                                [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
+                                                            )
+                                                      )
+                                                    , ( "body", fqVal [ "Http" ] "emptyBody" )
+                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
+                                                    , ( "timeout", val "Nothing" )
+                                                    , ( "tracker", val "Nothing" )
+                                                    ]
+                                                )
+                                        )
+                                ]
+                                    |> List.filterMap identity
+
+                            _ ->
+                                []
+                    )
+                |> List.foldl (++) []
+             )
+                ++ (expectableTypes spec |> List.map (\type_ -> funDecl Nothing Nothing ("expect" ++ type_) [ varPattern "msg" ] (apply [ fqFun [ "Http" ] "expectJson", val "msg", typeDecoderVal namespace (CustomTypeRef type_) ])))
+                ++ (sendableTypes spec |> List.map (\type_ -> funDecl Nothing Nothing (toCamelCase type_ ++ "Body") [ varPattern "body" ] (binOpChain (val "body") piper [ typeEncoderFun namespace (CustomTypeRef type_), fqFun [ "Http" ] "jsonBody" ])))
+                ++ [ funDecl
+                        Nothing
+                        Nothing
+                        "reduceResponse"
+                        [ varPattern "ok", varPattern "err", varPattern "result" ]
+                        (caseExpr (val "result") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ val "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ val "err", val "value" ] ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "headers"
+                        [ varPattern "list", varPattern "request" ]
+                        (updateRecord "request" [ ( "headers", applyBinOp (val "list") piper (apply [ fqFun [ "List" ] "map", lambda [ tuplePattern [ varPattern "k", varPattern "v" ] ] (apply [ fqFun [ "Http" ] "header", val "k", val "v" ]) ]) ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "header"
+                        [ varPattern "key", varPattern "value", varPattern "request" ]
+                        (updateRecord "request" [ ( "headers", applyBinOp (access (val "request") "headers") append (list [ apply [ fqFun [ "Http" ] "header", val "key", val "value" ] ]) ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "timeout"
+                        [ varPattern "t", varPattern "request" ]
+                        (updateRecord "request" [ ( "timeout", construct "Just" [ val "t" ] ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "noTimeout"
+                        [ varPattern "request" ]
+                        (updateRecord "request" [ ( "timeout", construct "Nothing" [] ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "tracker"
+                        [ varPattern "name", varPattern "request" ]
+                        (updateRecord "request" [ ( "tracker", construct "Just" [ val "name" ] ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "noTracker"
+                        [ varPattern "name", varPattern "request" ]
+                        (updateRecord "request" [ ( "tracker", construct "Nothing" [] ) ])
+                   ]
+            )
+            Nothing
+    }
+
+
+specFiles : ModuleName -> Spec -> List File
+specFiles namespace spec =
+    [ modelFile namespace spec
+    , encodeFile namespace spec
+    , decodeFile namespace spec
+    , httpFile namespace spec
     ]

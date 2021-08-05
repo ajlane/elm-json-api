@@ -1,11 +1,12 @@
 module Main exposing (..)
 
-import Api exposing (Article, Index, IndexUrl, SearchResponse(..), SearchResults, SearchUrl, get, tracker, withIndexUrl, withSearchUrl)
+import Api.Http exposing (getIndexUrl, getSearchUrl, tracker)
+import Api.Model exposing (Article, Index, IndexUrl(..), SearchResponse(..), SearchUrl)
 import Browser exposing (Document)
 import Html exposing (div, h1, input, li, p, text)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onInput)
-import Http exposing (Error(..))
+import Http exposing (Body, Error(..), Expect, Header)
 import Time
 
 
@@ -34,7 +35,7 @@ type Msg
 
 init : flags -> ( Model, Cmd Msg )
 init _ =
-    ( { article = Nothing, search = Nothing, query = "", results = Nothing, error = Nothing }, withIndexUrl url |> get IndexReceived IndexUnavailable )
+    ( { article = Nothing, search = Nothing, query = "", results = Nothing, error = Nothing }, url |> getIndexUrl IndexReceived IndexUnavailable |> Http.request )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -55,7 +56,7 @@ update msg model =
         QueryUpdated query ->
             case model.search of
                 Just search ->
-                    ( { model | query = query }, withSearchUrl { q = query, size = Just "10", after = Nothing } search |> tracker "search" |> get SearchResultsReceived SearchResultsUnavailable )
+                    ( { model | query = query }, search |> getSearchUrl { q = query, size = Just "10", after = Nothing } SearchResultsReceived SearchResultsUnavailable |> tracker "search" |> Http.request )
 
                 Nothing ->
                     ( { model | query = query }, Cmd.none )

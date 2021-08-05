@@ -98,5 +98,5 @@ suite =
                     |> List.map (\{ path } -> path)
                     |> List.sort
                     |> Expect.equal
-                        [ "MyApp/Api.elm" ]
+                        [ "MyApp/Decode.elm", "MyApp/Encode.elm", "MyApp/Http.elm", "MyApp/Model.elm" ]
         ]
