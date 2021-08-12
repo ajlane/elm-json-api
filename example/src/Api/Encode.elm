@@ -1,6 +1,5 @@
 module Api.Encode exposing (..)
 
-import Api.Encode
 import Api.Model
 import Dict
 import Http
@@ -28,10 +27,10 @@ updateDraft value =
 updateArticleResponse value =
     case value of
         Api.Model.UpdateArticleResponseOk v ->
-            Json.Encode.object [ ( "ok", v |> Api.Encode.article ) ]
+            Json.Encode.object [ ( "ok", v |> article ) ]
 
         Api.Model.UpdateArticleResponseOutdated v ->
-            Json.Encode.object [ ( "outdated", v |> Api.Encode.article ) ]
+            Json.Encode.object [ ( "outdated", v |> article ) ]
 
 
 searchUrl (Api.Model.SearchUrl template) =
@@ -39,7 +38,7 @@ searchUrl (Api.Model.SearchUrl template) =
 
 
 searchResults =
-    Json.Encode.list Api.Encode.searchHit
+    Json.Encode.list searchHit
 
 
 searchResponse value =
@@ -48,7 +47,7 @@ searchResponse value =
             Json.Encode.object [ ( "none", Json.Encode.object [] ) ]
 
         Api.Model.SearchResponseSome v ->
-            Json.Encode.object [ ( "some", v |> Api.Encode.searchResults ) ]
+            Json.Encode.object [ ( "some", v |> searchResults ) ]
 
 
 {-| Encodes SearchHit values as JSON.
@@ -58,7 +57,7 @@ searchResponse value =
 searchHit : Api.Model.SearchHit -> Json.Encode.Value
 searchHit value =
     Json.Encode.object
-        ([ Just ( "href", value.href |> Api.Encode.articleUrl )
+        ([ Just ( "href", value.href |> articleUrl )
          , Just ( "id", value.id |> Json.Encode.string )
          , Just ( "snippet", value.snippet |> Json.Encode.string )
          , Just ( "title", value.title |> Json.Encode.string )
@@ -85,7 +84,7 @@ newDraft value =
 newArticleResponse value =
     case value of
         Api.Model.NewArticleResponseOk v ->
-            Json.Encode.object [ ( "ok", v |> Api.Encode.article ) ]
+            Json.Encode.object [ ( "ok", v |> article ) ]
 
 
 indexUrl (Api.Model.IndexUrl url) =
@@ -99,9 +98,9 @@ indexUrl (Api.Model.IndexUrl url) =
 index : Api.Model.Index -> Json.Encode.Value
 index value =
     Json.Encode.object
-        ([ Just ( "featured", value.featured |> Api.Encode.article )
-         , Just ( "search", value.search |> Api.Encode.searchUrl )
-         , Just ( "self", value.self |> Api.Encode.indexUrl )
+        ([ Just ( "featured", value.featured |> article )
+         , Just ( "search", value.search |> searchUrl )
+         , Just ( "self", value.self |> indexUrl )
          ]
             |> List.filterMap identity
         )
@@ -123,7 +122,7 @@ article value =
             ( "created"
             , value.created |> (Time.posixToMillis >> Json.Encode.int)
             )
-         , Just ( "self", value.self |> Api.Encode.articleUrl )
+         , Just ( "self", value.self |> articleUrl )
          , Just ( "title", value.title |> Json.Encode.string )
          , value.updated
             |> Maybe.map

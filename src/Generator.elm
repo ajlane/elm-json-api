@@ -23,8 +23,8 @@ type alias Namespace =
     List String
 
 
-propertyAnn : ModuleName -> Spec.Property -> ( String, Elm.CodeGen.TypeAnnotation )
-propertyAnn namespace property =
+propertyAnn : ModuleName -> ModuleName -> Spec.Property -> ( String, Elm.CodeGen.TypeAnnotation )
+propertyAnn namespace moduleName property =
     case property of
         Spec.StringProperty propertyName stringProperty ->
             ( propertyName
@@ -83,10 +83,10 @@ propertyAnn namespace property =
         Spec.CustomProperty propertyName customProperty ->
             ( propertyName
             , if customProperty.optional then
-                maybeAnn (typed customProperty.is [])
+                maybeAnn (apiModelType namespace moduleName customProperty.is [])
 
               else
-                fqTyped (apiModelModuleName namespace) customProperty.is []
+                apiModelType namespace moduleName customProperty.is []
             )
 
 
@@ -126,16 +126,28 @@ apiHttpModuleName namespace =
     namespace ++ [ "Http" ]
 
 
-apiModelType namespace name =
-    fqTyped (apiModelModuleName namespace) name
+apiModelType namespace moduleName name =
+    if moduleName == apiModelModuleName namespace then
+        typed name
+
+    else
+        fqTyped (apiModelModuleName namespace) name
 
 
-apiModelConstruct namespace name =
-    fqConstruct (apiModelModuleName namespace) name
+apiModelConstruct namespace moduleName name =
+    if moduleName == apiModelModuleName namespace then
+        construct name
+
+    else
+        fqConstruct (apiModelModuleName namespace) name
 
 
-apiModelNamedPattern namespace name =
-    fqNamedPattern (apiModelModuleName namespace) name
+apiModelNamedPattern namespace moduleName name =
+    if moduleName == apiModelModuleName namespace then
+        namedPattern name
+
+    else
+        fqNamedPattern (apiModelModuleName namespace) name
 
 
 importApiModel : ModuleName -> Import
@@ -188,10 +200,10 @@ importUrlInterpolate =
     importStmt [ "Url", "Interpolate" ] Nothing Nothing
 
 
-urlParamsPatterns : ModuleName -> TypeName -> List Spec.UrlParam -> List Pattern
-urlParamsPatterns namespace typeName params =
+urlParamsPatterns : ModuleName -> ModuleName -> TypeName -> List Spec.UrlParam -> List Pattern
+urlParamsPatterns namespace moduleName typeName params =
     if params |> List.isEmpty then
-        [ apiModelNamedPattern namespace typeName [ varPattern "url" ] ]
+        [ apiModelNamedPattern namespace moduleName typeName [ varPattern "url" ] ]
 
     else
         [ params
@@ -202,15 +214,19 @@ urlParamsPatterns namespace typeName params =
                             name
                 )
             |> recordPattern
-        , apiModelNamedPattern namespace typeName [ varPattern "template" ]
+        , apiModelNamedPattern namespace moduleName typeName [ varPattern "template" ]
         ]
 
 
-typeEncoderFun : ModuleName -> TypeRef -> Expression
-typeEncoderFun namespace ref =
+typeEncoderFun : ModuleName -> ModuleName -> TypeRef -> Expression
+typeEncoderFun namespace moduleName ref =
     case ref of
         CustomTypeRef name ->
-            fqFun (apiEncodeModuleName namespace) (toCamelCase name)
+            if moduleName == apiEncodeModuleName namespace then
+                fun (toCamelCase name)
+
+            else
+                fqFun (apiEncodeModuleName namespace) (toCamelCase name)
 
         UrlTypeRef ->
             jsonEncodeFun "string"
@@ -231,11 +247,15 @@ typeEncoderFun namespace ref =
             parens (applyBinOp (fqFun [ "Time" ] "posixToMillis") composer (jsonEncodeFun "int"))
 
 
-typeDecoderVal : ModuleName -> TypeRef -> Expression
-typeDecoderVal namespace ref =
+typeDecoderVal : ModuleName -> ModuleName -> TypeRef -> Expression
+typeDecoderVal namespace moduleName ref =
     case ref of
         CustomTypeRef name ->
-            fqVal (apiDecodeModuleName namespace) (toCamelCase name)
+            if moduleName == apiDecodeModuleName namespace then
+                val (toCamelCase name)
+
+            else
+                fqVal (apiDecodeModuleName namespace) (toCamelCase name)
 
         UrlTypeRef ->
             jsonDecodeVal "string"
@@ -316,7 +336,7 @@ modelFile namespace spec =
     , content =
         file
             (normalModule (apiModelModuleName namespace) [])
-            [ importApiModel namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            [ importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
             (spec.types
                 |> List.map
                     (\type_ ->
@@ -334,7 +354,7 @@ modelFile namespace spec =
                                     typeName
                                     []
                                     (recordAnn
-                                        (typeDef.has |> List.map (propertyAnn namespace))
+                                        (typeDef.has |> List.map (propertyAnn namespace (apiModelModuleName namespace)))
                                     )
                                 ]
 
@@ -399,7 +419,7 @@ encodeFile namespace spec =
     , content =
         file
             (normalModule (apiEncodeModuleName namespace) [])
-            [ importApiModel namespace, importApiEncode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            [ importApiModel namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
             (spec.types
                 |> List.map
                     (\type_ ->
@@ -410,6 +430,7 @@ encodeFile namespace spec =
                                     Nothing
                                     (toCamelCase typeName)
                                     [ apiModelNamedPattern namespace
+                                        (apiEncodeModuleName namespace)
                                         typeName
                                         [ if (typeDef.params |> List.length) > 1 then
                                             varPattern "template"
@@ -433,7 +454,7 @@ encodeFile namespace spec =
                                 [ funDecl
                                     (emptyDocComment |> markdown ("Encodes " ++ typeName ++ " values as JSON.") |> Just)
                                     (funAnn
-                                        (apiModelType namespace typeName [])
+                                        (apiModelType namespace (apiEncodeModuleName namespace) typeName [])
                                         (jsonEncodeType "Value" [])
                                         |> Just
                                     )
@@ -457,25 +478,25 @@ encodeFile namespace spec =
                                                                 in
                                                                 case p of
                                                                     CustomProperty propertyName customPropertyDefinition ->
-                                                                        encodedProperty propertyName customPropertyDefinition (typeEncoderFun namespace (CustomTypeRef customPropertyDefinition.is))
+                                                                        encodedProperty propertyName customPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) (CustomTypeRef customPropertyDefinition.is))
 
                                                                     BoolProperty propertyName boolPropertyDefinition ->
-                                                                        encodedProperty propertyName boolPropertyDefinition (typeEncoderFun namespace BoolTypeRef)
+                                                                        encodedProperty propertyName boolPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) BoolTypeRef)
 
                                                                     InstantProperty propertyName instantPropertyDefinition ->
-                                                                        encodedProperty propertyName instantPropertyDefinition (typeEncoderFun namespace InstantTypeRef)
+                                                                        encodedProperty propertyName instantPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) InstantTypeRef)
 
                                                                     StringProperty propertyName stringPropertyDefinition ->
-                                                                        encodedProperty propertyName stringPropertyDefinition (typeEncoderFun namespace StringTypeRef)
+                                                                        encodedProperty propertyName stringPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) StringTypeRef)
 
                                                                     IntProperty propertyName intPropertyDefinition ->
-                                                                        encodedProperty propertyName intPropertyDefinition (typeEncoderFun namespace IntTypeRef)
+                                                                        encodedProperty propertyName intPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) IntTypeRef)
 
                                                                     FloatProperty propertyName floatPropertyDefinition ->
-                                                                        encodedProperty propertyName floatPropertyDefinition (typeEncoderFun namespace FloatTypeRef)
+                                                                        encodedProperty propertyName floatPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) FloatTypeRef)
 
                                                                     UrlProperty propertyName urlPropertyDefinition ->
-                                                                        encodedProperty propertyName urlPropertyDefinition (typeEncoderFun namespace UrlTypeRef)
+                                                                        encodedProperty propertyName urlPropertyDefinition (typeEncoderFun namespace (apiEncodeModuleName namespace) UrlTypeRef)
                                                             )
                                                     )
                                                 )
@@ -498,6 +519,7 @@ encodeFile namespace spec =
                                             |> List.map
                                                 (\( variantName, variantDef ) ->
                                                     ( apiModelNamedPattern namespace
+                                                        (apiEncodeModuleName namespace)
                                                         (typeName ++ variantName)
                                                         (case variantDef.is of
                                                             Just _ ->
@@ -513,7 +535,7 @@ encodeFile namespace spec =
                                                                 [ string (variantName |> toCamelCase)
                                                                 , case variantDef.is of
                                                                     Just variantType ->
-                                                                        applyBinOp (val "v") piper (typeEncoderFun namespace variantType)
+                                                                        applyBinOp (val "v") piper (typeEncoderFun namespace (apiEncodeModuleName namespace) variantType)
 
                                                                     Nothing ->
                                                                         apply [ jsonEncodeFun "object", list [] ]
@@ -531,7 +553,7 @@ encodeFile namespace spec =
                                     Nothing
                                     Nothing
                                     (toCamelCase typeName)
-                                    (apply [ jsonEncodeFun "list", typeEncoderFun namespace typeDef.of_ ])
+                                    (apply [ jsonEncodeFun "list", typeEncoderFun namespace (apiEncodeModuleName namespace) typeDef.of_ ])
                                 ]
 
                             CustomBool typeName typeDef ->
@@ -581,7 +603,7 @@ decodeFile namespace spec =
     , content =
         file
             (normalModule (apiDecodeModuleName namespace) [])
-            [ importApiModel namespace, importApiDecode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            [ importApiModel namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
             (spec.types
                 |> List.map
                     (\type_ ->
@@ -591,13 +613,13 @@ decodeFile namespace spec =
                                     Nothing
                                     Nothing
                                     (toCamelCase typeName)
-                                    (apply [ jsonDecodeFun "map", apiModelConstruct namespace typeName [], jsonDecodeFun "string" ])
+                                    (apply [ jsonDecodeFun "map", apiModelConstruct namespace (apiDecodeModuleName namespace) typeName [], jsonDecodeFun "string" ])
                                 ]
 
                             CustomRecord typeName typeDef ->
                                 [ valDecl
                                     (emptyDocComment |> markdown ("Decodes JSON as " ++ typeName ++ " values.") |> Just)
-                                    (jsonDecodeType "Decoder" [ apiModelType namespace typeName [] ] |> Just)
+                                    (jsonDecodeType "Decoder" [ apiModelType namespace (apiDecodeModuleName namespace) typeName [] ] |> Just)
                                     (toCamelCase typeName)
                                     (apply
                                         ([ jsonDecodeFun
@@ -608,7 +630,7 @@ decodeFile namespace spec =
                                              else
                                                 "map"
                                             )
-                                         , apiModelConstruct namespace typeName []
+                                         , apiModelConstruct namespace (apiDecodeModuleName namespace) typeName []
                                          ]
                                             ++ (typeDef.has
                                                     |> List.map
@@ -625,7 +647,7 @@ decodeFile namespace spec =
                                                                                     [ jsonDecodeFun "andThen"
                                                                                     , lambda [ varPattern "m" ]
                                                                                         (caseExpr (val "m")
-                                                                                            [ ( namedPattern "Just" [ varPattern "_" ], applyBinOp (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace typeRef ]) piper (apply [ jsonDecodeFun "map", construct "Just" [] ]) )
+                                                                                            [ ( namedPattern "Just" [ varPattern "_" ], applyBinOp (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace (apiDecodeModuleName namespace) typeRef ]) piper (apply [ jsonDecodeFun "map", construct "Just" [] ]) )
                                                                                             , ( namedPattern "Nothing" [], apply [ jsonDecodeFun "succeed", construct "Nothing" [] ] )
                                                                                             ]
                                                                                         )
@@ -634,7 +656,7 @@ decodeFile namespace spec =
                                                                             )
 
                                                                     else
-                                                                        parens (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace typeRef ])
+                                                                        parens (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace (apiDecodeModuleName namespace) typeRef ])
                                                             in
                                                             case p of
                                                                 StringProperty name { optional } ->
@@ -682,10 +704,10 @@ decodeFile namespace spec =
                                                                 (\( variantName, variantDef ) ->
                                                                     case variantDef.is of
                                                                         Just t ->
-                                                                            ( listPattern [ variantName |> toCamelCase |> stringPattern ], applyBinOp (apply [ jsonDecodeFun "field", string (variantName |> toCamelCase), typeDecoderVal namespace t ]) piper (apply [ jsonDecodeFun "map", apiModelConstruct namespace (typeName ++ variantName) [] ]) )
+                                                                            ( listPattern [ variantName |> toCamelCase |> stringPattern ], applyBinOp (apply [ jsonDecodeFun "field", string (variantName |> toCamelCase), typeDecoderVal namespace (apiDecodeModuleName namespace) t ]) piper (apply [ jsonDecodeFun "map", apiModelConstruct namespace (apiDecodeModuleName namespace) (typeName ++ variantName) [] ]) )
 
                                                                         Nothing ->
-                                                                            ( listPattern [ variantName |> toCamelCase |> stringPattern ], apply [ jsonDecodeFun "succeed", apiModelConstruct namespace (typeName ++ variantName) [] ] )
+                                                                            ( listPattern [ variantName |> toCamelCase |> stringPattern ], apply [ jsonDecodeFun "succeed", apiModelConstruct namespace (apiDecodeModuleName namespace) (typeName ++ variantName) [] ] )
                                                                 )
                                                          )
                                                             ++ [ ( namedPattern "_" [], apply [ jsonDecodeFun "fail", string ("Expected exactly one of: " ++ (typeDef.oneOf |> Dict.keys |> List.map toCamelCase |> String.join ", ") ++ ".") ] )
@@ -701,9 +723,9 @@ decodeFile namespace spec =
                             CustomList typeName typeDef ->
                                 [ valDecl
                                     Nothing
-                                    (Just (jsonDecodeType "Decoder" [ apiModelType namespace typeName [] ]))
+                                    (Just (jsonDecodeType "Decoder" [ apiModelType namespace (apiDecodeModuleName namespace) typeName [] ]))
                                     (toCamelCase typeName)
-                                    (apply [ jsonDecodeFun "list", typeDecoderVal namespace typeDef.of_ ])
+                                    (apply [ jsonDecodeFun "list", typeDecoderVal namespace (apiDecodeModuleName namespace) typeDef.of_ ])
                                 ]
 
                             CustomBool typeName typeDef ->
@@ -843,7 +865,7 @@ customUrlToStringFunDecl namespace typeName typeDef =
         Nothing
         Nothing
         (toCamelCase typeName ++ "ToString")
-        (urlParamsPatterns namespace typeName typeDef.params)
+        (urlParamsPatterns namespace (apiEncodeModuleName namespace) typeName typeDef.params)
         (apply
             [ fqFun [ "Url", "Interpolate" ] "interpolate"
             , if typeDef.params |> List.isEmpty then
@@ -1079,8 +1101,8 @@ httpFile namespace spec =
                     )
                 |> List.foldl (++) []
              )
-                ++ (expectableTypes spec |> List.map (\type_ -> funDecl Nothing Nothing ("expect" ++ type_) [ varPattern "msg" ] (apply [ fqFun [ "Http" ] "expectJson", val "msg", typeDecoderVal namespace (CustomTypeRef type_) ])))
-                ++ (sendableTypes spec |> List.map (\type_ -> funDecl Nothing Nothing (toCamelCase type_ ++ "Body") [ varPattern "body" ] (binOpChain (val "body") piper [ typeEncoderFun namespace (CustomTypeRef type_), fqFun [ "Http" ] "jsonBody" ])))
+                ++ (expectableTypes spec |> List.map (\type_ -> funDecl Nothing Nothing ("expect" ++ type_) [ varPattern "msg" ] (apply [ fqFun [ "Http" ] "expectJson", val "msg", typeDecoderVal namespace (apiHttpModuleName namespace) (CustomTypeRef type_) ])))
+                ++ (sendableTypes spec |> List.map (\type_ -> funDecl Nothing Nothing (toCamelCase type_ ++ "Body") [ varPattern "body" ] (binOpChain (val "body") piper [ typeEncoderFun namespace (apiHttpModuleName namespace) (CustomTypeRef type_), fqFun [ "Http" ] "jsonBody" ])))
                 ++ [ funDecl
                         Nothing
                         Nothing

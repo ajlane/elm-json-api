@@ -1,6 +1,5 @@
 module Api.Decode exposing (..)
 
-import Api.Decode
 import Api.Model
 import Dict
 import Http
@@ -29,11 +28,11 @@ updateArticleResponse =
             (\dict ->
                 case dict |> Dict.keys of
                     [ "ok" ] ->
-                        Json.Decode.field "ok" Api.Decode.article
+                        Json.Decode.field "ok" article
                             |> Json.Decode.map Api.Model.UpdateArticleResponseOk
 
                     [ "outdated" ] ->
-                        Json.Decode.field "outdated" Api.Decode.article
+                        Json.Decode.field "outdated" article
                             |> Json.Decode.map
                                 Api.Model.UpdateArticleResponseOutdated
 
@@ -49,7 +48,7 @@ searchUrl =
 
 searchResults : Json.Decode.Decoder Api.Model.SearchResults
 searchResults =
-    Json.Decode.list Api.Decode.searchHit
+    Json.Decode.list searchHit
 
 
 searchResponse =
@@ -61,7 +60,7 @@ searchResponse =
                         Json.Decode.succeed Api.Model.SearchResponseNone
 
                     [ "some" ] ->
-                        Json.Decode.field "some" Api.Decode.searchResults
+                        Json.Decode.field "some" searchResults
                             |> Json.Decode.map Api.Model.SearchResponseSome
 
                     _ ->
@@ -77,7 +76,7 @@ searchHit : Json.Decode.Decoder Api.Model.SearchHit
 searchHit =
     Json.Decode.map4
         Api.Model.SearchHit
-        (Json.Decode.field "href" Api.Decode.articleUrl)
+        (Json.Decode.field "href" articleUrl)
         (Json.Decode.field "id" Json.Decode.string)
         (Json.Decode.field "snippet" Json.Decode.string)
         (Json.Decode.field "title" Json.Decode.string)
@@ -102,7 +101,7 @@ newArticleResponse =
             (\dict ->
                 case dict |> Dict.keys of
                     [ "ok" ] ->
-                        Json.Decode.field "ok" Api.Decode.article
+                        Json.Decode.field "ok" article
                             |> Json.Decode.map Api.Model.NewArticleResponseOk
 
                     _ ->
@@ -122,9 +121,9 @@ index : Json.Decode.Decoder Api.Model.Index
 index =
     Json.Decode.map3
         Api.Model.Index
-        (Json.Decode.field "featured" Api.Decode.article)
-        (Json.Decode.field "search" Api.Decode.searchUrl)
-        (Json.Decode.field "self" Api.Decode.indexUrl)
+        (Json.Decode.field "featured" article)
+        (Json.Decode.field "search" searchUrl)
+        (Json.Decode.field "self" indexUrl)
 
 
 articleUrl =
@@ -144,7 +143,7 @@ article =
             "created"
             (Json.Decode.map Time.millisToPosix Json.Decode.int)
         )
-        (Json.Decode.field "self" Api.Decode.articleUrl)
+        (Json.Decode.field "self" articleUrl)
         (Json.Decode.field "title" Json.Decode.string)
         (Json.Decode.field "updated" (Json.Decode.succeed ())
             |> Json.Decode.maybe

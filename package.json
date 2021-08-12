@@ -1,10 +1,19 @@
 {
   "name": "elm-json-api",
   "version": "0.0.1",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ajlane/elm-json-api.git"
+  },
   "scripts": {
     "build": "webpack",
-    "example": "node target/elm-json-api.js -o example/src -s example/api.spec.json",
+    "example": "elm-json-api -o example/src -s example/api.spec.json",
     "test": "elm-test"
+  },
+  "preferGlobal": true,
+  "bin": {
+    "elm-json-api": "target/elm-json-api.js"
   },
   "dependencies": {
     "commander": "^7.2.0"
@@ -13,6 +22,7 @@
     "elm": "^0.19.1-5",
     "elm-webpack-loader": "^8.0.0",
     "webpack": "^5.38.1",
-    "webpack-cli": "^4.7.0"
+    "webpack-cli": "^4.7.0",
+    "webpack-shebang-plugin": "^1.1.6"
   }
 }

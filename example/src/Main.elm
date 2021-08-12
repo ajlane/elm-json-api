@@ -1,17 +1,44 @@
 module Main exposing (..)
 
 import Api.Http exposing (getIndexUrl, getSearchUrl, tracker)
-import Api.Model exposing (Article, Index, IndexUrl(..), SearchResponse(..), SearchUrl)
+import Api.Model exposing (Article, ArticleUrl(..), Index, IndexUrl(..), SearchResponse(..), SearchUrl(..))
 import Browser exposing (Document)
 import Html exposing (div, h1, input, li, p, text)
-import Html.Attributes exposing (class)
+import Html.Attributes exposing (class, title)
 import Html.Events exposing (onInput)
+import Html.Keyed
 import Http exposing (Body, Error(..), Expect, Header)
+import Task
 import Time
 
 
 url =
     IndexUrl "http://localhost/blog"
+
+
+mockRequest request =
+    let
+        exampleArticleUrl =
+            ArticleUrl "http://localhost/blog/articles/0"
+
+        exampleArticle =
+            { self = exampleArticleUrl
+            , title = "Lorem ipsum"
+            , created = Time.millisToPosix 0
+            , updated = Nothing
+            , version = 1
+            , body = "Dolor sit amet, consectetuer adipiscing elit. Nullam dictum felis eu pede mollis pretium. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem."
+            }
+    in
+    case request.url of
+        "http://localhost/blog" ->
+            { featured = exampleArticle, search = SearchUrl "http://localhost/blog/search{?q,after,size}", self = url } |> Task.succeed |> Task.perform IndexReceived
+
+        "http://localhost/blog/search?q=Lorem&after=&size=10" ->
+            SearchResponseSome [ { href = exampleArticleUrl, id = "0", title = "Lorem ipsum", snippet = "Dolor sit amet, consectetuer adipiscing elit." } ] |> Task.succeed |> Task.perform SearchResultsReceived
+
+        _ ->
+            Http.BadStatus 404 |> Task.succeed |> Task.perform IndexUnavailable
 
 
 type alias Model =
@@ -35,7 +62,7 @@ type Msg
 
 init : flags -> ( Model, Cmd Msg )
 init _ =
-    ( { article = Nothing, search = Nothing, query = "", results = Nothing, error = Nothing }, url |> getIndexUrl IndexReceived IndexUnavailable |> Http.request )
+    ( { article = Nothing, search = Nothing, query = "", results = Nothing, error = Nothing }, url |> getIndexUrl IndexReceived IndexUnavailable |> mockRequest )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -56,7 +83,7 @@ update msg model =
         QueryUpdated query ->
             case model.search of
                 Just search ->
-                    ( { model | query = query }, search |> getSearchUrl { q = query, size = Just "10", after = Nothing } SearchResultsReceived SearchResultsUnavailable |> tracker "search" |> Http.request )
+                    ( { model | query = query }, search |> getSearchUrl { q = query, size = Just "10", after = Nothing } SearchResultsReceived SearchResultsUnavailable |> tracker "search" |> mockRequest )
 
                 Nothing ->
                     ( { model | query = query }, Cmd.none )
@@ -118,23 +145,23 @@ view model =
             ( Nothing, Nothing ) ->
                 "Blog"
     , body =
-        case ( model.error, model.article ) of
+        (case ( model.error, model.article ) of
             ( Just err, _ ) ->
                 case err of
                     BadBody msg ->
-                        [ text msg, searchBox model ]
+                        [ text msg ]
 
                     BadUrl msg ->
-                        [ text msg, searchBox model ]
+                        [ text msg ]
 
                     Timeout ->
-                        [ text "Request timed out", searchBox model ]
+                        [ text "Request timed out" ]
 
                     NetworkError ->
-                        [ text "Network failure", searchBox model ]
+                        [ text "Network failure" ]
 
                     BadStatus status ->
-                        [ h1 [] [ text (String.fromInt status) ], searchBox model ]
+                        [ h1 [] [ text (String.fromInt status) ] ]
 
             ( Nothing, Just article ) ->
                 [ h1 [] [ text article.title ]
@@ -157,11 +184,12 @@ view model =
                                     |> Just
                         )
                     |> div []
-                , searchBox model
                 ]
 
             ( Nothing, Nothing ) ->
                 [ text "Please wait" ]
+        )
+            ++ [ searchBox model ]
     }
 
 

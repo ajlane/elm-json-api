@@ -1,6 +1,5 @@
 module Api.Model exposing (..)
 
-import Api.Model
 import Dict
 import Http
 import Json.Decode
@@ -56,11 +55,7 @@ type SearchResponse
 
 -}
 type alias SearchHit =
-    { href : Api.Model.ArticleUrl
-    , id : String
-    , snippet : String
-    , title : String
-    }
+    { href : ArticleUrl, id : String, snippet : String, title : String }
 
 
 {-| A draft of a new article.
@@ -92,10 +87,7 @@ type IndexUrl
 
 -}
 type alias Index =
-    { featured : Api.Model.Article
-    , search : Api.Model.SearchUrl
-    , self : Api.Model.IndexUrl
-    }
+    { featured : Article, search : SearchUrl, self : IndexUrl }
 
 
 {-| A link to the content of an article.
@@ -113,7 +105,7 @@ type ArticleUrl
 type alias Article =
     { body : String
     , created : Time.Posix
-    , self : Api.Model.ArticleUrl
+    , self : ArticleUrl
     , title : String
     , updated : Maybe Time.Posix
     , version : Int

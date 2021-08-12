@@ -2,6 +2,7 @@
 
 const path = require('path')
 const TerserPlugin = require("terser-webpack-plugin");
+const ShebangPlugin = require('webpack-shebang-plugin');
 
 module.exports = {
     target: 'node',
@@ -68,5 +69,8 @@ module.exports = {
                 ],
             }
         ],
-    }
+    },
+    plugins: [
+        new ShebangPlugin()
+    ]
 };
