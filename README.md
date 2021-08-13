@@ -2,7 +2,7 @@
 
 An Elm code generator for JSON APIs.
 
-Generates Elm Types, Aliases, Encoders, Decoders, and Cmds for services defined by a simple interface spec.
+Generates types and functions for working with a service defined by a simple interface spec.
 
 ## Example
 
@@ -43,11 +43,12 @@ Generates Elm Types, Aliases, Encoders, Decoders, and Cmds for services defined 
 ```
 
 ```bash
-node elm-json-api.js --spec example.spec.json --namespace ExampleApi --out src
+elm-json-api --spec example.spec.json --namespace ExampleApi --out src
 ```
 
 ```elm
-import ExampleApi exposing (CalculatorUrl, withCalculatorUrl, Operation, get, post)
+import ExampleApi.Model exposing (CalculatorUrl, Operation(..))
+import ExampleApi.Http exposing (getCalculatorUrl, postCalculatorUrl, request)
 
 url = CalculatorUrl "http://localhost/calculator"
     
@@ -61,12 +62,12 @@ type Msg
     | ShowNumber Int
     | ShowError Http.Error
 
-init _ = (Loading, withCalculatorUrl url |> get ShowNumber ShowError)
+init _ = (Loading, url |> getCalculatorUrl ShowNumber ShowError |> request)
 
 update msg result =
     case msg of
         Send operation ->
-            (Loading, withCalculatorUrl url |> post ShowNumber ShowError operation)
+            (Loading, url |> postCalculatorUrl operation ShowNumber ShowError |> request)
         ShowNumber number ->
             (Ok number, Nothing)
         ShowError err ->
