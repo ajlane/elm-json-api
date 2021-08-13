@@ -7,7 +7,9 @@ import Dict
 import Http
 import Json.Decode
 import Json.Encode
+import Task
 import Time
+import Url
 import Url.Interpolate
 
 
@@ -135,25 +137,38 @@ reduceResponse ok err result =
             err value
 
 
-headers list request =
-    { request | headers = list |> List.map (\( k, v ) -> Http.header k v) }
+headers list req =
+    { req | headers = list |> List.map (\( k, v ) -> Http.header k v) }
 
 
-header key value request =
-    { request | headers = request.headers ++ [ Http.header key value ] }
+header key value req =
+    { req | headers = req.headers ++ [ Http.header key value ] }
 
 
-timeout t request =
-    { request | timeout = Just t }
+timeout t req =
+    { req | timeout = Just t }
 
 
-noTimeout request =
-    { request | timeout = Nothing }
+noTimeout req =
+    { req | timeout = Nothing }
 
 
-tracker name request =
-    { request | tracker = Just name }
+tracker name req =
+    { req | tracker = Just name }
 
 
-noTracker name request =
-    { request | tracker = Nothing }
+noTracker name req =
+    { req | tracker = Nothing }
+
+
+request =
+    Http.request
+
+
+mock res req =
+    case req.url |> Url.fromString of
+        Just reqUrl ->
+            res reqUrl |> Task.succeed |> Task.perform identity
+
+        Nothing ->
+            Cmd.none

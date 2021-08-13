@@ -3,12 +3,13 @@ module Main exposing (..)
 import Api.Http exposing (getIndexUrl, getSearchUrl, tracker)
 import Api.Model exposing (Article, ArticleUrl(..), Index, IndexUrl(..), SearchResponse(..), SearchUrl(..))
 import Browser exposing (Document)
-import Html exposing (div, h1, input, li, p, text)
-import Html.Attributes exposing (class, title)
+import Html exposing (article, div, h1, input, label, li, p, text)
+import Html.Attributes exposing (class, for, name)
 import Html.Events exposing (onInput)
-import Html.Keyed
-import Http exposing (Body, Error(..), Expect, Header)
-import Task
+import Http exposing (Body, Error(..))
+import Mock exposing (request)
+import Model exposing (Loadable(..), Model)
+import Msg exposing (Msg(..))
 import Time
 
 
@@ -16,180 +17,226 @@ url =
     IndexUrl "http://localhost/blog"
 
 
-mockRequest request =
-    let
-        exampleArticleUrl =
-            ArticleUrl "http://localhost/blog/articles/0"
-
-        exampleArticle =
-            { self = exampleArticleUrl
-            , title = "Lorem ipsum"
-            , created = Time.millisToPosix 0
-            , updated = Nothing
-            , version = 1
-            , body = "Dolor sit amet, consectetuer adipiscing elit. Nullam dictum felis eu pede mollis pretium. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem."
-            }
-    in
-    case request.url of
-        "http://localhost/blog" ->
-            { featured = exampleArticle, search = SearchUrl "http://localhost/blog/search{?q,after,size}", self = url } |> Task.succeed |> Task.perform IndexReceived
-
-        "http://localhost/blog/search?q=Lorem&after=&size=10" ->
-            SearchResponseSome [ { href = exampleArticleUrl, id = "0", title = "Lorem ipsum", snippet = "Dolor sit amet, consectetuer adipiscing elit." } ] |> Task.succeed |> Task.perform SearchResultsReceived
-
-        _ ->
-            Http.BadStatus 404 |> Task.succeed |> Task.perform IndexUnavailable
-
-
-type alias Model =
-    { article : Maybe Article
-    , search : Maybe SearchUrl
-    , query : String
-    , results : Maybe SearchResponse
-    , error : Maybe Http.Error
-    }
-
-
-type Msg
-    = IndexReceived Index
-    | IndexUnavailable Http.Error
-    | ArticleReceived Article
-    | ArticleUnavailable Http.Error
-    | QueryUpdated String
-    | SearchResultsReceived SearchResponse
-    | SearchResultsUnavailable Http.Error
-
-
 init : flags -> ( Model, Cmd Msg )
 init _ =
-    ( { article = Nothing, search = Nothing, query = "", results = Nothing, error = Nothing }, url |> getIndexUrl IndexReceived IndexUnavailable |> mockRequest )
+    ( { article = Waiting
+      , search = Waiting
+      , query = ""
+      , results = Nothing
+      }
+    , url
+        |> getIndexUrl IndexReceived IndexUnavailable
+        |> request
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         IndexReceived index ->
-            ( { model | article = Just index.featured, search = Just index.search }, Cmd.none )
+            ( { model
+                | article = Received index.featured
+                , search = Received index.search
+              }
+            , Cmd.none
+            )
 
         IndexUnavailable err ->
-            ( { model | error = Just err }, Cmd.none )
+            ( { model
+                | article = Unavailable err
+                , search = Unavailable err
+              }
+            , Cmd.none
+            )
 
         ArticleReceived article ->
-            ( { model | article = Just article }, Cmd.none )
+            ( { model
+                | article = Received article
+              }
+            , Cmd.none
+            )
 
         ArticleUnavailable err ->
-            ( { model | article = Nothing, error = Just err }, Cmd.none )
+            ( { model
+                | article = Unavailable err
+              }
+            , Cmd.none
+            )
+
+        QueryUpdated "" ->
+            ( { model
+                | query = ""
+                , results = Nothing
+              }
+            , Cmd.none
+            )
 
         QueryUpdated query ->
             case model.search of
-                Just search ->
-                    ( { model | query = query }, search |> getSearchUrl { q = query, size = Just "10", after = Nothing } SearchResultsReceived SearchResultsUnavailable |> tracker "search" |> mockRequest )
+                Waiting ->
+                    ( { model
+                        | query = ""
+                        , results = Nothing
+                      }
+                    , Cmd.none
+                    )
 
-                Nothing ->
-                    ( { model | query = query }, Cmd.none )
+                Unavailable _ ->
+                    ( { model
+                        | query = ""
+                        , results = Nothing
+                      }
+                    , Cmd.none
+                    )
+
+                Received search ->
+                    ( { model
+                        | query = query
+                        , results = Just Waiting
+                      }
+                    , search
+                        |> getSearchUrl { q = query, size = Just "10", after = Nothing } SearchResultsReceived SearchResultsUnavailable
+                        |> tracker "search"
+                        |> request
+                    )
 
         SearchResultsReceived results ->
-            ( { model | results = Just results }, Cmd.none )
+            ( { model
+                | results = Just <| Received results
+              }
+            , Cmd.none
+            )
 
         SearchResultsUnavailable err ->
-            ( { model | error = Just err }, Cmd.none )
+            ( { model
+                | results = Just <| Unavailable err
+              }
+            , Cmd.none
+            )
 
 
 subscriptions _ =
     Sub.none
 
 
-searchBox { search, query, results } =
-    div [ class "search" ]
-        (case search of
-            Just _ ->
-                [ input [ onInput QueryUpdated ]
-                    [ text query ]
-                , div
-                    [ class "results" ]
-                    (if query |> String.isEmpty then
-                        []
-
-                     else
-                        case results of
-                            Just (SearchResponseSome hits) ->
-                                hits
-                                    |> List.map
-                                        (\hit ->
-                                            li [] [ text hit.title ]
-                                        )
-
-                            Just SearchResponseNone ->
-                                [ text "No matches" ]
-
-                            Nothing ->
-                                [ text "Loading" ]
-                    )
-                ]
-
-            Nothing ->
-                []
-        )
-
-
 view : Model -> Document Msg
 view model =
-    { title =
-        case ( model.error, model.article ) of
-            ( Just _, _ ) ->
-                "Error"
+    let
+        title =
+            case model.article of
+                Received article ->
+                    article.title
 
-            ( Nothing, Just article ) ->
-                article.title
+                Waiting ->
+                    "Blog"
 
-            ( Nothing, Nothing ) ->
-                "Blog"
+                Unavailable _ ->
+                    "Error"
+
+        searchBox =
+            div [ class "search" ] <|
+                case model.search of
+                    Waiting ->
+                        []
+
+                    Unavailable _ ->
+                        []
+
+                    Received _ ->
+                        [ label [ for "search" ] [ text "Search:" ]
+                        , input [ name "search", onInput QueryUpdated ]
+                            [ text model.query ]
+                        ]
+
+        resultsList =
+            div [ class "results" ] <|
+                case model.results of
+                    Just (Received (SearchResponseSome hits)) ->
+                        hits
+                            |> List.map
+                                (\hit ->
+                                    li [] [ text hit.title ]
+                                )
+
+                    Just (Received SearchResponseNone) ->
+                        [ text "No matches" ]
+
+                    Just Waiting ->
+                        [ text "Loading" ]
+
+                    Just (Unavailable err) ->
+                        case err of
+                            BadBody msg ->
+                                [ text msg ]
+
+                            BadUrl msg ->
+                                [ text msg ]
+
+                            Timeout ->
+                                [ text "Request timed out" ]
+
+                            NetworkError ->
+                                [ text "Network failure" ]
+
+                            BadStatus status ->
+                                [ text <| String.fromInt status ++ " response from server" ]
+
+                    Nothing ->
+                        []
+
+        content =
+            article [] <|
+                case model.article of
+                    Waiting ->
+                        [ text "Please wait" ]
+
+                    Received article ->
+                        [ h1 [] [ text article.title ]
+                        , div [ class "year" ]
+                            [ article.updated
+                                |> Maybe.withDefault article.created
+                                |> Time.toYear Time.utc
+                                |> String.fromInt
+                                |> text
+                            ]
+                        , article.body
+                            |> String.split "\n"
+                            |> List.filterMap
+                                (\line ->
+                                    if line |> String.isEmpty then
+                                        Nothing
+
+                                    else
+                                        Just <| p [] [ text line ]
+                                )
+                            |> div [ class "text" ]
+                        ]
+
+                    Unavailable error ->
+                        [ div [ class "error" ] <|
+                            case error of
+                                BadBody msg ->
+                                    [ text msg ]
+
+                                BadUrl msg ->
+                                    [ text msg ]
+
+                                Timeout ->
+                                    [ text "Request timed out" ]
+
+                                NetworkError ->
+                                    [ text "Network failure" ]
+
+                                BadStatus status ->
+                                    [ h1 [] [ text <| String.fromInt status ] ]
+                        ]
+    in
+    { title = title
     , body =
-        (case ( model.error, model.article ) of
-            ( Just err, _ ) ->
-                case err of
-                    BadBody msg ->
-                        [ text msg ]
-
-                    BadUrl msg ->
-                        [ text msg ]
-
-                    Timeout ->
-                        [ text "Request timed out" ]
-
-                    NetworkError ->
-                        [ text "Network failure" ]
-
-                    BadStatus status ->
-                        [ h1 [] [ text (String.fromInt status) ] ]
-
-            ( Nothing, Just article ) ->
-                [ h1 [] [ text article.title ]
-                , div [ class "year" ]
-                    [ article.updated
-                        |> Maybe.withDefault article.created
-                        |> Time.toYear Time.utc
-                        |> String.fromInt
-                        |> text
-                    ]
-                , article.body
-                    |> String.split "\n"
-                    |> List.filterMap
-                        (\line ->
-                            if line |> String.isEmpty then
-                                Nothing
-
-                            else
-                                p [] [ text line ]
-                                    |> Just
-                        )
-                    |> div []
-                ]
-
-            ( Nothing, Nothing ) ->
-                [ text "Please wait" ]
-        )
-            ++ [ searchBox model ]
+        [ searchBox
+        , resultsList
+        , content
+        ]
     }
 
 

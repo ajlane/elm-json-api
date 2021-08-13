@@ -195,6 +195,16 @@ importHttp =
     importStmt [ "Http" ] Nothing Nothing
 
 
+importUrl : Import
+importUrl =
+    importStmt [ "Url" ] Nothing Nothing
+
+
+importTask : Import
+importTask =
+    importStmt [ "Task" ] Nothing Nothing
+
+
 importUrlInterpolate : Import
 importUrlInterpolate =
     importStmt [ "Url", "Interpolate" ] Nothing Nothing
@@ -958,7 +968,7 @@ httpFile namespace spec =
     , content =
         file
             (normalModule (apiHttpModuleName namespace) [])
-            [ importApiModel namespace, importApiEncode namespace, importApiDecode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
+            [ importApiModel namespace, importApiEncode namespace, importApiDecode namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importUrl, importTask, importTime ]
             ((spec.types
                 |> List.map
                     (\type_ ->
@@ -1113,38 +1123,58 @@ httpFile namespace spec =
                         Nothing
                         Nothing
                         "headers"
-                        [ varPattern "list", varPattern "request" ]
-                        (updateRecord "request" [ ( "headers", applyBinOp (val "list") piper (apply [ fqFun [ "List" ] "map", lambda [ tuplePattern [ varPattern "k", varPattern "v" ] ] (apply [ fqFun [ "Http" ] "header", val "k", val "v" ]) ]) ) ])
+                        [ varPattern "list", varPattern "req" ]
+                        (updateRecord "req" [ ( "headers", applyBinOp (val "list") piper (apply [ fqFun [ "List" ] "map", lambda [ tuplePattern [ varPattern "k", varPattern "v" ] ] (apply [ fqFun [ "Http" ] "header", val "k", val "v" ]) ]) ) ])
                    , funDecl
                         Nothing
                         Nothing
                         "header"
-                        [ varPattern "key", varPattern "value", varPattern "request" ]
-                        (updateRecord "request" [ ( "headers", applyBinOp (access (val "request") "headers") append (list [ apply [ fqFun [ "Http" ] "header", val "key", val "value" ] ]) ) ])
+                        [ varPattern "key", varPattern "value", varPattern "req" ]
+                        (updateRecord "req" [ ( "headers", applyBinOp (access (val "req") "headers") append (list [ apply [ fqFun [ "Http" ] "header", val "key", val "value" ] ]) ) ])
                    , funDecl
                         Nothing
                         Nothing
                         "timeout"
-                        [ varPattern "t", varPattern "request" ]
-                        (updateRecord "request" [ ( "timeout", construct "Just" [ val "t" ] ) ])
+                        [ varPattern "t", varPattern "req" ]
+                        (updateRecord "req" [ ( "timeout", construct "Just" [ val "t" ] ) ])
                    , funDecl
                         Nothing
                         Nothing
                         "noTimeout"
-                        [ varPattern "request" ]
-                        (updateRecord "request" [ ( "timeout", construct "Nothing" [] ) ])
+                        [ varPattern "req" ]
+                        (updateRecord "req" [ ( "timeout", construct "Nothing" [] ) ])
                    , funDecl
                         Nothing
                         Nothing
                         "tracker"
-                        [ varPattern "name", varPattern "request" ]
-                        (updateRecord "request" [ ( "tracker", construct "Just" [ val "name" ] ) ])
+                        [ varPattern "name", varPattern "req" ]
+                        (updateRecord "req" [ ( "tracker", construct "Just" [ val "name" ] ) ])
                    , funDecl
                         Nothing
                         Nothing
                         "noTracker"
-                        [ varPattern "name", varPattern "request" ]
-                        (updateRecord "request" [ ( "tracker", construct "Nothing" [] ) ])
+                        [ varPattern "name", varPattern "req" ]
+                        (updateRecord "req" [ ( "tracker", construct "Nothing" [] ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "request"
+                        []
+                        (fqFun [ "Http" ] "request")
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "mock"
+                        [ varPattern "res", varPattern "req" ]
+                        (caseExpr
+                            (applyBinOp (access (val "req") "url")
+                                piper
+                                (fqFun [ "Url" ] "fromString")
+                            )
+                            [ ( namedPattern "Just" [ varPattern "reqUrl" ], binOpChain (apply [ fun "res", val "reqUrl" ]) piper [ fqFun [ "Task" ] "succeed", apply [ fqFun [ "Task" ] "perform", val "identity" ] ] )
+                            , ( namedPattern "Nothing" [], fqFun [ "Cmd" ] "none" )
+                            ]
+                        )
                    ]
             )
             Nothing
