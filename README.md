@@ -37,7 +37,7 @@ types:
 ```
 
 ```bash
-elm-json-api --spec example.spec.json --namespace ExampleApi --out src
+elm-json-api --spec example.spec.yaml --namespace ExampleApi --out src
 ```
 
 ```elm
