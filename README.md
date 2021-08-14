@@ -6,40 +6,34 @@ Generates types and functions for working with a service defined by a simple int
 
 ## Example
 
-```json
-{
-  "description": "An example interface",
-  "types": {
-    "CalculatorUrl": {
-      "is": "Url",
-      "description": "A link to a service that adds or subtracts from an integer stored in memory.",
-      "methods": {
-        "get": "Int",
-        "post": {
-          "accept": "Operation",
-          "expect": "Int"
-        }
-      }
-    },
-    "Operation": {
-      "is": "Enum",
-      "description": "An operation for the calculator to apply",
-      "oneOf": {
-        "Clear": {
-          "description": "Resets the result to zero."
-        },
-        "Add": {
-          "is": "Int",
-          "description": "Adds the given value to the current result"
-        },
-        "Subtract": {
-          "is": "Int",
-          "description": "Subtracts the given value from the current result"
-        }
-      }
-    }
-  }
-}
+```yaml
+description: An example interface
+types:
+  CalculatorUrl:
+    is: Url
+    description:
+      A link to a service that adds or subtracts from an integer stored in memory.
+    methods:
+      get: Int
+      post:
+        accept: Operation
+        expect: Int
+  Operation:
+    is: Enum
+    description:
+      An operation for the calculator to apply
+    oneOf:
+      Clear:
+        description:
+          Resets the result to zero.
+      Add:
+        is: Int
+        description:
+          Adds the given value to the current result
+      Subtract:
+        is: Int
+        description:
+          Subtracts the given value from the current result
 ```
 
 ```bash

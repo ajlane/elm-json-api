@@ -2,6 +2,7 @@
 
 import fs from "fs"
 import path from "path"
+import yaml, {JSON_SCHEMA} from "js-yaml";
 import {Command} from "commander";
 import {Elm} from "Main.elm"
 
@@ -27,7 +28,12 @@ function crash(err) {
 fs.readFile(specPath, 'utf8', (err, data) => {
     if (err) return crash(err);
 
-    let spec = JSON.parse(data);
+    let spec;
+    if (specPath.endsWith(".yml") || specPath.endsWith(".yaml")) {
+        spec = yaml.load(data, {filename: specPath, schema: JSON_SCHEMA})
+    } else {
+        spec = JSON.parse(data);
+    }
 
     let main = Elm.Main.init()
     main.ports.output.subscribe(output => {
