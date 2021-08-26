@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import fs from "fs"
-import path from "path"
-import yaml, {JSON_SCHEMA} from "js-yaml";
 import {Command} from "commander";
-import {Elm} from "Main.elm"
+import {promises as fs} from "fs";
+import yaml, {JSON_SCHEMA} from "js-yaml";
+import {Elm} from "./src/Main.elm";
+import path from "path";
 
 const program = new Command()
 program
@@ -20,13 +20,8 @@ let specPath = options.spec
 let outputPath = options.out
 let namespace = options.namespace
 
-function crash(err) {
-    console.error(err)
-    process.exit(1)
-}
-
-fs.readFile(specPath, 'utf8', (err, data) => {
-    if (err) return crash(err);
+async function generate(specPath, outputPath, namespace) {
+    let data = await fs.readFile(specPath, 'utf8')
 
     let spec;
     if (specPath.endsWith(".yml") || specPath.endsWith(".yaml")) {
@@ -35,23 +30,33 @@ fs.readFile(specPath, 'utf8', (err, data) => {
         spec = JSON.parse(data);
     }
 
-    let main = Elm.Main.init()
-    main.ports.output.subscribe(output => {
-        if (output.error) return crash(output.error);
-        for (let entry of output) {
-            let filePath = path.resolve(outputPath, entry.path)
-            fs.mkdir(path.dirname(filePath), {recursive: true}, (err) => {
-                if (err) return crash(err);
-            })
-            fs.writeFile(filePath, entry.content, (err) => {
-                if (err) return crash(err);
-                console.log(filePath);
-            })
-        }
-    })
-    main.ports.input.send({
-        namespace: namespace,
-        spec: spec
-    })
-});
+    let files = await new Promise((resolve, reject) => {
+        let main = Elm.Main.init()
+        main.ports.output.subscribe(output => {
+            if (output.error) return reject(output.error);
+            return resolve(output)
+        })
+        main.ports.input.send({
+            namespace: namespace,
+            spec: spec
+        })
+    });
 
+    async function* write(files) {
+        for (let file of await files) {
+            let filePath = path.resolve(outputPath, file.path)
+            await fs.mkdir(path.dirname(filePath), {recursive: true})
+            await fs.writeFile(filePath, file.content);
+            yield filePath
+        }
+    }
+
+    for await (let file of write(files)) {
+        console.log(file)
+    }
+}
+
+generate(specPath, outputPath, namespace).catch(err => {
+    console.error(err);
+    process.exit(1);
+});

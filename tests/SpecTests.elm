@@ -1,15 +1,13 @@
 module SpecTests exposing (suite)
 
-import Dict
 import Expect
 import Json.Decode
-import Json.Encode
 import Spec exposing (CustomType(..), Property(..), Spec, TypeRef(..), UrlParam(..), defaultMethods)
 import Test exposing (..)
 
 
-decodeSpec spec =
-    Json.Decode.decodeString Spec.specDecoder spec
+decodeSpec =
+    Json.Decode.decodeString Spec.specDecoder
 
 
 suite =
