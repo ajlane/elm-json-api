@@ -572,7 +572,7 @@ encodeFile namespace spec =
                                     Nothing
                                     (toCamelCase typeName)
                                     [ varPattern "value" ]
-                                    (apply [ jsonEncodeFun "bool" ])
+                                    (apply [ jsonEncodeFun "bool", val "value" ])
                                 ]
 
                             CustomString typeName typeDef ->
@@ -581,7 +581,7 @@ encodeFile namespace spec =
                                     Nothing
                                     (toCamelCase typeName)
                                     [ varPattern "value" ]
-                                    (apply [ jsonEncodeFun "string" ])
+                                    (apply [ jsonEncodeFun "string", val "value" ])
                                 ]
 
                             CustomInt typeName typeDef ->
@@ -590,7 +590,7 @@ encodeFile namespace spec =
                                     Nothing
                                     (toCamelCase typeName)
                                     [ varPattern "value" ]
-                                    (apply [ jsonEncodeFun "int" ])
+                                    (apply [ jsonEncodeFun "int", val "value" ])
                                 ]
 
                             CustomFloat typeName typeDef ->
@@ -599,7 +599,7 @@ encodeFile namespace spec =
                                     Nothing
                                     (toCamelCase typeName)
                                     [ varPattern "value" ]
-                                    (apply [ jsonEncodeFun "float" ])
+                                    (apply [ jsonEncodeFun "float", val "value" ])
                                 ]
                     )
                 |> List.foldl (++) []

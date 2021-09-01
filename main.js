@@ -10,7 +10,7 @@ const program = new Command()
 program
     .option("-o, --out <path>", "Where to save the generated .elm files.", "src")
     .option("-n, --namespace <name>", "A namespace to prefix the generated modules with.", "Api")
-    .option("-s, --spec <path>", "The path to the spec file.", "api.spec.json")
+    .option("-s, --spec <path>", "The path to the spec file.", "api.spec.yaml")
 
 program.parse()
 
