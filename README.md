@@ -4,6 +4,25 @@ An Elm code generator for JSON APIs.
 
 Generates types and functions for working with a service defined by a simple interface spec.
 
+## Getting Started
+
+### Install from Git
+
+```
+git clone https://github.com/ajlane/elm-json-api.git
+cd elm-json-api
+npm run build
+npm link -g
+```
+
+### Run example
+
+```
+cd example
+elm-json-api
+elm reactor
+```
+
 ## Example
 
 ```yaml
