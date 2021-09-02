@@ -109,9 +109,9 @@ view result =
 
 ## Is it finished?
 
-Not yet. Outstanding work includes:
+It works, but it isn't finished yet. Outstanding work includes:
 
-- [ ] Make sure the generated functions for POST and PUT requests actually work
+- [ ] Make sure the generated functions for POST and PUT requests send the body correctly
 - [ ] Increase test coverage for generated files (by expanding the example app's spec to use more features and test them)
 - [ ] Contribute a fix upstream to make uri templates conform to the spec for missing params
 - [ ] Contribute a fix upstream to remove excess whitespace in generated docs
