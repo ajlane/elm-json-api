@@ -1,4 +1,4 @@
-# Elm JSON API
+# Seed API
 
 An Elm code generator for JSON APIs.
 
@@ -9,8 +9,8 @@ Generates types and functions for working with a service defined by a simple int
 ### Install from Git
 
 ```
-git clone https://github.com/ajlane/elm-json-api.git
-cd elm-json-api
+git clone https://github.com/ajlane/seed-api.git
+cd seed-api
 npm run build
 npm link -g
 ```
@@ -19,7 +19,7 @@ npm link -g
 
 ```
 cd example
-elm-json-api
+seed-api
 elm reactor
 ```
 
@@ -60,7 +60,7 @@ types:
 And use that spec to generate code and documentation:
 
 ```bash
-elm-json-api --spec example.spec.yaml --namespace ExampleApi --out src
+seed-api --spec example.spec.yaml --namespace ExampleApi --out src
 ```
 
 That you can then import and use in an Elm application:
@@ -122,8 +122,9 @@ It works, but it isn't finished yet. Outstanding work includes:
 - [ ] Fill out the set of constraints you can add to primitive types, such as setting a minimum length for lists, or matching a regular expression against a string
 - [ ] Add support for a key-value type (or decide that lists of key-value pairs are good enough)
 - [ ] Add a feature to check whether two different versions of a spec are compatible
+- [ ] Consider adding a namespace URI/root wrapper to serialised messages so that they can be decoded without knowing which type they are ahead of time.
 - [ ] Fix the github actions so that the test pipeline can run automatically again
-- [ ] Rename the tool to avoid confusion with elm-jsonapi or the json:api project
+- [x] Rename the tool to avoid confusion with elm-jsonapi or the json:api project
 
 ## What about the server-side?
 
