@@ -1,19 +1,19 @@
 {
-  "name": "elm-json-api",
+  "name": "seed-api",
   "version": "0.0.1",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git://github.com/ajlane/elm-json-api.git"
+    "url": "git://github.com/ajlane/seed-api.git"
   },
   "scripts": {
     "build": "webpack",
-    "example": "elm-json-api -o example/src -s example/api.spec.yaml",
+    "example": "seed-api -o example/src -s example/api.spec.yaml",
     "test": "elm-test && cd example && elm-test"
   },
   "preferGlobal": true,
   "bin": {
-    "elm-json-api": "target/elm-json-api.js"
+    "seed-api": "target/seed-api.js"
   },
   "dependencies": {
     "commander": "^7.2.0",
