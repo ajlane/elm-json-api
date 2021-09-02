@@ -122,6 +122,7 @@ It works, but it isn't finished yet. Outstanding work includes:
 - [ ] Fill out the set of constraints you can add to primitive types, such as setting a minimum length for lists, or matching a regular expression against a string
 - [ ] Add support for a key-value type (or decide that lists of key-value pairs are good enough)
 - [ ] Add a feature to check whether two different versions of a spec are compatible
+- [ ] Fix the github actions so that the test pipeline can run automatically again
 - [ ] Rename the tool to avoid confusion with elm-jsonapi or the json:api project
 
 ## What about the server-side?
