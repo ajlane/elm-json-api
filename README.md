@@ -23,7 +23,9 @@ elm-json-api
 elm reactor
 ```
 
-## Example
+## What does it do?
+
+It allows you to declaratively define a JSON-based API for a service, using a spec that looks something like this:
 
 ```yaml
 description: An example interface
@@ -55,9 +57,13 @@ types:
           Subtracts the given value from the current result
 ```
 
+And use that spec to generate code and documentation:
+
 ```bash
 elm-json-api --spec example.spec.yaml --namespace ExampleApi --out src
 ```
+
+That you can then import and use in an Elm application:
 
 ```elm
 import ExampleApi.Model exposing (CalculatorUrl, Operation(..))
@@ -100,3 +106,25 @@ view result =
                 button [onClick (Clear |> Send)] [ text "Reset" ]
             ]
 ```
+
+## Is it finished?
+
+Not yet. Outstanding work includes:
+
+- [ ] Make sure the generated functions for POST and PUT requests actually work
+- [ ] Increase test coverage for generated files (by expanding the example app's spec to use more features and test them)
+- [ ] Contribute a fix upstream to make uri templates conform to the spec for missing params
+- [ ] Contribute a fix upstream to remove excess whitespace in generated docs
+- [ ] Add descriptions of parameters and fields to generated docs
+- [ ] Add examples to generated docs
+- [ ] Remove unused imports
+- [ ] Optionally install necessary dependencies in elm.json
+- [ ] Fill out the set of constraints you can add to primitive types, such as setting a minimum length for lists, or matching a regular expression against a string
+- [ ] Add support for a key-value type (or decide that lists of key-value pairs are good enough)
+- [ ] Add a feature to check whether two different versions of a spec are compatible
+
+## What about the server-side?
+
+If you use something like [elm serverless](https://github.com/the-sett/elm-serverless), you can use the same generated .elm files to implement the API from the server side.
+
+There isn't much that is elm-specific about the spec files. They're just json objects, formatted with yaml for readability. Tools could be written to generate equivalent types, stubs, and documentation for the server-side implementation in any language.
