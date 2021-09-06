@@ -111,7 +111,6 @@ view result =
 
 It works, but it isn't finished yet. Outstanding work includes:
 
-- [ ] Make sure the generated functions for POST and PUT requests send the body correctly
 - [ ] Increase test coverage for generated files (by expanding the example app's spec to use more features and test them)
 - [ ] Contribute a fix upstream to make uri templates conform to the spec for missing params
 - [ ] Contribute a fix upstream to remove excess whitespace in generated docs
@@ -124,7 +123,6 @@ It works, but it isn't finished yet. Outstanding work includes:
 - [ ] Add a feature to check whether two different versions of a spec are compatible
 - [ ] Consider adding a namespace URI/root wrapper to serialised messages so that they can be decoded without knowing which type they are ahead of time.
 - [ ] Fix the github actions so that the test pipeline can run automatically again
-- [x] Rename the tool to avoid confusion with elm-jsonapi or the json:api project
 
 ## What about the server-side?
 
