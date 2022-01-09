@@ -1,6 +1,6 @@
 module Main exposing (..)
 
-import Api.Http exposing (getIndexUrl, getSearchUrl, tracker)
+import Api.Http exposing (indexUrlGet, searchUrlGet, tracker)
 import Api.Model exposing (Article, ArticleUrl(..), Index, IndexUrl(..), SearchResponse(..), SearchUrl(..))
 import Browser exposing (Document)
 import Html exposing (article, div, h1, input, label, li, p, text)
@@ -24,9 +24,8 @@ init _ =
       , query = ""
       , results = Nothing
       }
-    , url
-        |> getIndexUrl IndexReceived IndexUnavailable
-        |> request
+    , indexUrlGet url
+        |> request IndexReceived IndexUnavailable
     )
 
 
@@ -89,15 +88,14 @@ update msg model =
                     , Cmd.none
                     )
 
-                Received search ->
+                Received searchUrl ->
                     ( { model
                         | query = query
                         , results = Just Waiting
                       }
-                    , search
-                        |> getSearchUrl { q = query, size = Just "10", after = Nothing } SearchResultsReceived SearchResultsUnavailable
+                    , searchUrlGet { q = query, size = Just "10", after = Nothing } searchUrl
                         |> tracker "search"
-                        |> request
+                        |> request SearchResultsReceived SearchResultsUnavailable
                     )
 
         SearchResultsReceived results ->

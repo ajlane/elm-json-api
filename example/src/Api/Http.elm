@@ -26,11 +26,11 @@ searchUrlToString { after, q, size } (Api.Model.SearchUrl template) =
         )
 
 
-getSearchUrl params ok err url =
+searchUrlGet params url =
     { method = "GET"
     , url = searchUrlToString params url
     , body = Http.emptyBody
-    , expect = expectSearchResponse (reduceResponse ok err)
+    , expect = Api.Decode.searchResponse
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
     , tracker = Nothing
@@ -41,22 +41,22 @@ indexUrlToString (Api.Model.IndexUrl url) =
     Url.Interpolate.interpolate url Dict.empty
 
 
-getIndexUrl ok err url =
+indexUrlGet url =
     { method = "GET"
     , url = indexUrlToString url
     , body = Http.emptyBody
-    , expect = expectIndex (reduceResponse ok err)
+    , expect = Api.Decode.index
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
     , tracker = Nothing
     }
 
 
-postIndexUrl body ok err url =
+indexUrlPost body url =
     { method = "POST"
     , url = indexUrlToString url
     , body = body |> newDraftBody
-    , expect = expectNewArticleResponse (reduceResponse ok err)
+    , expect = Api.Decode.newArticleResponse
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
     , tracker = Nothing
@@ -67,33 +67,33 @@ articleUrlToString (Api.Model.ArticleUrl url) =
     Url.Interpolate.interpolate url Dict.empty
 
 
-getArticleUrl ok err url =
+articleUrlGet url =
     { method = "GET"
     , url = articleUrlToString url
     , body = Http.emptyBody
-    , expect = expectArticle (reduceResponse ok err)
+    , expect = Api.Decode.article
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
     , tracker = Nothing
     }
 
 
-putArticleUrl body ok err url =
+articleUrlPut body url =
     { method = "PUT"
     , url = articleUrlToString url
     , body = body |> updateDraftBody
-    , expect = expectUpdateArticleResponse (reduceResponse ok err)
+    , expect = Api.Decode.updateArticleResponse
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
     , tracker = Nothing
     }
 
 
-deleteArticleUrl ok err url =
+articleUrlDelete url =
     { method = "DELETE"
     , url = articleUrlToString url
     , body = Http.emptyBody
-    , expect = Http.expectJson (reduceResponse ok err) Json.Decode.string
+    , expect = Json.Decode.string
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
     , tracker = Nothing
@@ -128,7 +128,7 @@ updateDraftBody body =
     body |> Api.Encode.updateDraft |> Http.jsonBody
 
 
-reduceResponse ok err result =
+resultToMsg ok err result =
     case result of
         Result.Ok value ->
             ok value
@@ -161,14 +161,26 @@ noTracker name req =
     { req | tracker = Nothing }
 
 
-request =
-    Http.request
+request ok err req =
+    { method = req.method
+    , url = req.url
+    , body = req.body
+    , expect = Http.expectJson (resultToMsg ok err) req.expect
+    , headers = req.headers
+    , timeout = req.timeout
+    , tracker = req.tracker
+    }
+        |> Http.request
 
 
-mock res req =
-    case req.url |> Url.fromString of
-        Just reqUrl ->
-            res reqUrl |> Task.succeed |> Task.perform identity
-
-        Nothing ->
-            Cmd.none
+mock res ok err req =
+    res req
+        |> resultToMsg
+            (Json.Decode.decodeValue req.expect
+                >> resultToMsg
+                    ok
+                    (Json.Decode.errorToString >> Http.BadBody >> err)
+            )
+            err
+        |> Task.succeed
+        |> Task.perform identity

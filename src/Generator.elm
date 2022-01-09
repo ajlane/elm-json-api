@@ -980,12 +980,12 @@ httpFile namespace spec =
                                         (\expect ->
                                             funDecl Nothing
                                                 Nothing
-                                                ("get" ++ typeName)
+                                                (toCamelCase typeName ++ "Get")
                                                 (if typeDef.params |> List.isEmpty then
-                                                    [ varPattern "ok", varPattern "err", varPattern "url" ]
+                                                    [ varPattern "url" ]
 
                                                  else
-                                                    [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                    [ varPattern "params", varPattern "url" ]
                                                 )
                                                 (record
                                                     [ ( "method", string "GET" )
@@ -999,7 +999,7 @@ httpFile namespace spec =
                                                             )
                                                       )
                                                     , ( "body", fqVal [ "Http" ] "emptyBody" )
-                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
                                                     , ( "tracker", val "Nothing" )
@@ -1011,13 +1011,13 @@ httpFile namespace spec =
                                         (\{ accept, expect } ->
                                             funDecl Nothing
                                                 Nothing
-                                                ("post" ++ typeName)
+                                                (toCamelCase typeName ++ "Post")
                                                 ([ varPattern "body" ]
                                                     ++ (if typeDef.params |> List.isEmpty then
-                                                            [ varPattern "ok", varPattern "err", varPattern "url" ]
+                                                            [ varPattern "url" ]
 
                                                         else
-                                                            [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                            [ varPattern "params", varPattern "url" ]
                                                        )
                                                 )
                                                 (record
@@ -1032,7 +1032,7 @@ httpFile namespace spec =
                                                             )
                                                       )
                                                     , ( "body", typeBodyFun accept (val "body") )
-                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
                                                     , ( "tracker", val "Nothing" )
@@ -1044,13 +1044,13 @@ httpFile namespace spec =
                                         (\{ accept, expect } ->
                                             funDecl Nothing
                                                 Nothing
-                                                ("put" ++ typeName)
+                                                (toCamelCase typeName ++ "Put")
                                                 ([ varPattern "body" ]
                                                     ++ (if typeDef.params |> List.isEmpty then
-                                                            [ varPattern "ok", varPattern "err", varPattern "url" ]
+                                                            [ varPattern "url" ]
 
                                                         else
-                                                            [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                            [ varPattern "params", varPattern "url" ]
                                                        )
                                                 )
                                                 (record
@@ -1065,7 +1065,7 @@ httpFile namespace spec =
                                                             )
                                                       )
                                                     , ( "body", typeBodyFun accept (val "body") )
-                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
                                                     , ( "tracker", val "Nothing" )
@@ -1077,12 +1077,12 @@ httpFile namespace spec =
                                         (\expect ->
                                             funDecl Nothing
                                                 Nothing
-                                                ("delete" ++ typeName)
+                                                (toCamelCase typeName ++ "Delete")
                                                 (if typeDef.params |> List.isEmpty then
-                                                    [ varPattern "ok", varPattern "err", varPattern "url" ]
+                                                    [ varPattern "url" ]
 
                                                  else
-                                                    [ varPattern "params", varPattern "ok", varPattern "err", varPattern "url" ]
+                                                    [ varPattern "params", varPattern "url" ]
                                                 )
                                                 (record
                                                     [ ( "method", string "DELETE" )
@@ -1096,7 +1096,7 @@ httpFile namespace spec =
                                                             )
                                                       )
                                                     , ( "body", fqVal [ "Http" ] "emptyBody" )
-                                                    , ( "expect", expectTypeFun expect (parens (apply [ fun "reduceResponse", val "ok", val "err" ])) )
+                                                    , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
                                                     , ( "tracker", val "Nothing" )
@@ -1116,7 +1116,7 @@ httpFile namespace spec =
                 ++ [ funDecl
                         Nothing
                         Nothing
-                        "reduceResponse"
+                        "resultToMsg"
                         [ varPattern "ok", varPattern "err", varPattern "result" ]
                         (caseExpr (val "result") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ val "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ val "err", val "value" ] ) ])
                    , funDecl
@@ -1159,20 +1159,46 @@ httpFile namespace spec =
                         Nothing
                         Nothing
                         "request"
-                        []
-                        (fqFun [ "Http" ] "request")
+                        [ varPattern "ok", varPattern "err", varPattern "req" ]
+                        (applyBinOp
+                            (record
+                                [ ( "method", access (val "req") "method" )
+                                , ( "url", access (val "req") "url" )
+                                , ( "body", access (val "req") "body" )
+                                , ( "expect", apply [ fqFun [ "Http" ] "expectJson", parens (apply [ fun "resultToMsg", val "ok", val "err" ]), access (val "req") "expect" ] )
+                                , ( "headers", access (val "req") "headers" )
+                                , ( "timeout", access (val "req") "timeout" )
+                                , ( "tracker", access (val "req") "tracker" )
+                                ]
+                            )
+                            piper
+                            (fqFun [ "Http" ] "request")
+                        )
                    , funDecl
                         Nothing
                         Nothing
                         "mock"
-                        [ varPattern "res", varPattern "req" ]
-                        (caseExpr
-                            (applyBinOp (access (val "req") "url")
-                                piper
-                                (fqFun [ "Url" ] "fromString")
-                            )
-                            [ ( namedPattern "Just" [ varPattern "reqUrl" ], binOpChain (apply [ fun "res", val "reqUrl" ]) piper [ fqFun [ "Task" ] "succeed", apply [ fqFun [ "Task" ] "perform", val "identity" ] ] )
-                            , ( namedPattern "Nothing" [], fqFun [ "Cmd" ] "none" )
+                        [ varPattern "res", varPattern "ok", varPattern "err", varPattern "req" ]
+                        (binOpChain (apply [ fun "res", val "req" ])
+                            piper
+                            [ apply
+                                [ fun "resultToMsg"
+                                , parens
+                                    (chain
+                                        (apply [ fqFun [ "Json", "Decode" ] "decodeValue", access (val "req") "expect" ])
+                                        [ parens
+                                            (apply
+                                                [ fun "resultToMsg"
+                                                , fun "ok"
+                                                , parens (chain (fqFun [ "Json", "Decode" ] "errorToString") [ fqConstruct [ "Http" ] "BadBody" [], fun "err" ])
+                                                ]
+                                            )
+                                        ]
+                                    )
+                                , fun "err"
+                                ]
+                            , fqFun [ "Task" ] "succeed"
+                            , apply [ fqFun [ "Task" ] "perform", fun "identity" ]
                             ]
                         )
                    ]

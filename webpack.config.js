@@ -11,7 +11,7 @@ module.exports = {
     entry: './main.js',
     output: {
         path: path.resolve(__dirname, 'target'),
-        filename: 'elm-json-api.js'
+        filename: 'seed-api.js'
     },
     optimization: {
         minimize: true,

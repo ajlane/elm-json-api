@@ -12,7 +12,7 @@ Generates types and functions for working with a service defined by a simple int
 git clone https://github.com/ajlane/seed-api.git
 cd seed-api
 npm run build
-npm link -g
+npm link
 ```
 
 ### Run example
@@ -67,7 +67,7 @@ That you can then import and use in an Elm application:
 
 ```elm
 import ExampleApi.Model exposing (CalculatorUrl, Operation(..))
-import ExampleApi.Http exposing (getCalculatorUrl, postCalculatorUrl, request)
+import ExampleApi.Http exposing (calculatorUrlGet, calculatorUrlPost, request)
 
 url = CalculatorUrl "http://localhost/calculator"
     
@@ -81,12 +81,12 @@ type Msg
     | ShowNumber Int
     | ShowError Http.Error
 
-init _ = (Loading, url |> getCalculatorUrl ShowNumber ShowError |> request)
+init _ = (Loading, calculatorUrlGet url |> request ShowNumber ShowError)
 
 update msg result =
     case msg of
         Send operation ->
-            (Loading, url |> postCalculatorUrl operation ShowNumber ShowError |> request)
+            (Loading, calculatorUrlPost operation url |> request ShowNumber ShowError)
         ShowNumber number ->
             (Ok number, Nothing)
         ShowError err ->
