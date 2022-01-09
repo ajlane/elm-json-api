@@ -29,7 +29,7 @@ searchUrlToString { after, q, size } (Api.Model.SearchUrl template) =
 searchUrlGet params url =
     { method = "GET"
     , url = searchUrlToString params url
-    , body = Http.emptyBody
+    , body = Nothing
     , expect = Api.Decode.searchResponse
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
@@ -44,7 +44,7 @@ indexUrlToString (Api.Model.IndexUrl url) =
 indexUrlGet url =
     { method = "GET"
     , url = indexUrlToString url
-    , body = Http.emptyBody
+    , body = Nothing
     , expect = Api.Decode.index
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
@@ -55,7 +55,7 @@ indexUrlGet url =
 indexUrlPost body url =
     { method = "POST"
     , url = indexUrlToString url
-    , body = body |> newDraftBody
+    , body = Api.Encode.newDraft body |> Just
     , expect = Api.Decode.newArticleResponse
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
@@ -70,7 +70,7 @@ articleUrlToString (Api.Model.ArticleUrl url) =
 articleUrlGet url =
     { method = "GET"
     , url = articleUrlToString url
-    , body = Http.emptyBody
+    , body = Nothing
     , expect = Api.Decode.article
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
@@ -81,7 +81,7 @@ articleUrlGet url =
 articleUrlPut body url =
     { method = "PUT"
     , url = articleUrlToString url
-    , body = body |> updateDraftBody
+    , body = Api.Encode.updateDraft body |> Just
     , expect = Api.Decode.updateArticleResponse
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
@@ -92,7 +92,7 @@ articleUrlPut body url =
 articleUrlDelete url =
     { method = "DELETE"
     , url = articleUrlToString url
-    , body = Http.emptyBody
+    , body = Nothing
     , expect = Json.Decode.string
     , headers = [ Http.header "Accept" "application/json" ]
     , timeout = Nothing
@@ -137,6 +137,15 @@ resultToMsg ok err result =
             err value
 
 
+maybeToMsg just nothing maybe =
+    case maybe of
+        Maybe.Just value ->
+            just value
+
+        Maybe.Nothing ->
+            nothing
+
+
 headers list req =
     { req | headers = list |> List.map (\( k, v ) -> Http.header k v) }
 
@@ -164,8 +173,8 @@ noTracker name req =
 request ok err req =
     { method = req.method
     , url = req.url
-    , body = req.body
-    , expect = Http.expectJson (resultToMsg ok err) req.expect
+    , body = req.body |> maybeToMsg Http.jsonBody Http.emptyBody
+    , expect = req.expect |> Http.expectJson (resultToMsg ok err)
     , headers = req.headers
     , timeout = req.timeout
     , tracker = req.tracker
@@ -174,13 +183,22 @@ request ok err req =
 
 
 mock res ok err req =
-    res req
-        |> resultToMsg
-            (Json.Decode.decodeValue req.expect
-                >> resultToMsg
-                    ok
-                    (Json.Decode.errorToString >> Http.BadBody >> err)
+    req.url
+        |> Url.fromString
+        |> maybeToMsg
+            (\url ->
+                res { method = req.method, url = url, body = req.body }
+                    |> resultToMsg
+                        (Json.Decode.decodeValue req.expect
+                            >> resultToMsg
+                                ok
+                                (Json.Decode.errorToString
+                                    >> Http.BadBody
+                                    >> err
+                                )
+                        )
+                        err
             )
-            err
+            (req.url |> Http.BadUrl |> err)
         |> Task.succeed
         |> Task.perform identity

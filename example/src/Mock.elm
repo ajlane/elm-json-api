@@ -37,12 +37,12 @@ request =
             , snippet = exampleArticle.body |> String.left 75
             }
 
-        response { url } =
-            case url.path of
-                "/blog" ->
+        response { method, url } =
+            case ( method, url.path ) of
+                ( "GET", "/blog" ) ->
                     { featured = exampleArticle, search = searchUrl, self = indexUrl } |> Api.Encode.index |> Ok
 
-                "/blog/search" ->
+                ( "GET", "/blog/search" ) ->
                     case url |> (s "blog" </> s "search" <?> Query.string "q" |> parse) of
                         Just (Just q) ->
                             if exampleArticle.title ++ "\n" ++ exampleArticle.body |> String.toLower |> String.contains (q |> String.toLower) then
@@ -55,7 +55,7 @@ request =
                             SearchResponseNone |> Api.Encode.searchResponse |> Ok
 
                         Nothing ->
-                            Http.BadUrl ((url |> Url.toString) ++ " is not a valid URL.") |> Err
+                            Http.BadUrl (url |> Url.toString) |> Err
 
                 _ ->
                     Http.BadStatus 404 |> Err

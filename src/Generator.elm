@@ -998,7 +998,7 @@ httpFile namespace spec =
                                                                 [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
                                                             )
                                                       )
-                                                    , ( "body", fqVal [ "Http" ] "emptyBody" )
+                                                    , ( "body", val "Nothing" )
                                                     , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
@@ -1031,7 +1031,7 @@ httpFile namespace spec =
                                                                 [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
                                                             )
                                                       )
-                                                    , ( "body", typeBodyFun accept (val "body") )
+                                                    , ( "body", applyBinOp (apply [ typeEncoderFun namespace (apiHttpModuleName namespace) accept, val "body" ]) piper (val "Just") )
                                                     , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
@@ -1064,7 +1064,7 @@ httpFile namespace spec =
                                                                 [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
                                                             )
                                                       )
-                                                    , ( "body", typeBodyFun accept (val "body") )
+                                                    , ( "body", applyBinOp (apply [ typeEncoderFun namespace (apiHttpModuleName namespace) accept, val "body" ]) piper (val "Just") )
                                                     , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
@@ -1095,7 +1095,7 @@ httpFile namespace spec =
                                                                 [ fun (toCamelCase typeName ++ "ToString"), val "params", val "url" ]
                                                             )
                                                       )
-                                                    , ( "body", fqVal [ "Http" ] "emptyBody" )
+                                                    , ( "body", val "Nothing" )
                                                     , ( "expect", typeDecoderVal namespace (apiHttpModuleName namespace) expect )
                                                     , ( "headers", list [ apply [ fqFun [ "Http" ] "header", string "Accept", string "application/json" ] ] )
                                                     , ( "timeout", val "Nothing" )
@@ -1119,6 +1119,12 @@ httpFile namespace spec =
                         "resultToMsg"
                         [ varPattern "ok", varPattern "err", varPattern "result" ]
                         (caseExpr (val "result") [ ( fqNamedPattern [ "Result" ] "Ok" [ varPattern "value" ], apply [ val "ok", val "value" ] ), ( fqNamedPattern [ "Result" ] "Err" [ varPattern "value" ], apply [ val "err", val "value" ] ) ])
+                   , funDecl
+                        Nothing
+                        Nothing
+                        "maybeToMsg"
+                        [ varPattern "just", varPattern "nothing", varPattern "maybe" ]
+                        (caseExpr (val "maybe") [ ( fqNamedPattern [ "Maybe" ] "Just" [ varPattern "value" ], apply [ val "just", val "value" ] ), ( fqNamedPattern [ "Maybe" ] "Nothing" [], val "nothing" ) ])
                    , funDecl
                         Nothing
                         Nothing
@@ -1164,8 +1170,8 @@ httpFile namespace spec =
                             (record
                                 [ ( "method", access (val "req") "method" )
                                 , ( "url", access (val "req") "url" )
-                                , ( "body", access (val "req") "body" )
-                                , ( "expect", apply [ fqFun [ "Http" ] "expectJson", parens (apply [ fun "resultToMsg", val "ok", val "err" ]), access (val "req") "expect" ] )
+                                , ( "body", applyBinOp (access (val "req") "body") piper (apply [ fun "maybeToMsg", fqFun [ "Http" ] "jsonBody", fqFun [ "Http" ] "emptyBody" ]) )
+                                , ( "expect", applyBinOp (access (val "req") "expect") piper (apply [ fqFun [ "Http" ] "expectJson", parens (apply [ fun "resultToMsg", val "ok", val "err" ]) ]) )
                                 , ( "headers", access (val "req") "headers" )
                                 , ( "timeout", access (val "req") "timeout" )
                                 , ( "tracker", access (val "req") "tracker" )
@@ -1179,23 +1185,35 @@ httpFile namespace spec =
                         Nothing
                         "mock"
                         [ varPattern "res", varPattern "ok", varPattern "err", varPattern "req" ]
-                        (binOpChain (apply [ fun "res", val "req" ])
+                        (binOpChain (access (val "req") "url")
                             piper
-                            [ apply
-                                [ fun "resultToMsg"
+                            [ fqFun [ "Url" ] "fromString"
+                            , apply
+                                [ fun "maybeToMsg"
                                 , parens
-                                    (chain
-                                        (apply [ fqFun [ "Json", "Decode" ] "decodeValue", access (val "req") "expect" ])
-                                        [ parens
-                                            (apply
+                                    (lambda [ varPattern "url" ]
+                                        (binOpChain (apply [ fun "res", record [ ( "method", access (val "req") "method" ), ( "url", val "url" ), ( "body", access (val "req") "body" ) ] ])
+                                            piper
+                                            [ apply
                                                 [ fun "resultToMsg"
-                                                , fun "ok"
-                                                , parens (chain (fqFun [ "Json", "Decode" ] "errorToString") [ fqConstruct [ "Http" ] "BadBody" [], fun "err" ])
+                                                , parens
+                                                    (chain
+                                                        (apply [ fqFun [ "Json", "Decode" ] "decodeValue", access (val "req") "expect" ])
+                                                        [ parens
+                                                            (apply
+                                                                [ fun "resultToMsg"
+                                                                , fun "ok"
+                                                                , parens (chain (fqFun [ "Json", "Decode" ] "errorToString") [ fqConstruct [ "Http" ] "BadBody" [], fun "err" ])
+                                                                ]
+                                                            )
+                                                        ]
+                                                    )
+                                                , fun "err"
                                                 ]
-                                            )
-                                        ]
+                                            ]
+                                        )
                                     )
-                                , fun "err"
+                                , parens (binOpChain (access (val "req") "url") piper [ fqFun [ "Http" ] "BadUrl", val "err" ])
                                 ]
                             , fqFun [ "Task" ] "succeed"
                             , apply [ fqFun [ "Task" ] "perform", fun "identity" ]
