@@ -614,7 +614,7 @@ decodeFile namespace spec =
         file
             (normalModule (apiDecodeModuleName namespace) [])
             [ importApiModel namespace, importDict, importHttp, importJsonDecode, importJsonEncode, importUrlInterpolate, importTime ]
-            (spec.types
+            ((spec.types
                 |> List.map
                     (\type_ ->
                         case type_ of
@@ -631,43 +631,36 @@ decodeFile namespace spec =
                                     (emptyDocComment |> markdown ("Decodes JSON as " ++ typeName ++ " values.") |> Just)
                                     (jsonDecodeType "Decoder" [ apiModelType namespace (apiDecodeModuleName namespace) typeName [] ] |> Just)
                                     (toCamelCase typeName)
-                                    (apply
-                                        ([ jsonDecodeFun
-                                            (if (typeDef.has |> List.length) > 1 then
-                                                "map" ++ (typeDef.has |> List.length |> String.fromInt)
-                                                -- TODO: Deal with records with even more properties
-
-                                             else
-                                                "map"
-                                            )
-                                         , apiModelConstruct namespace (apiDecodeModuleName namespace) typeName []
-                                         ]
-                                            ++ (typeDef.has
-                                                    |> List.map
-                                                        (\p ->
-                                                            let
-                                                                fieldDecoder name optional typeRef =
-                                                                    if optional then
-                                                                        parens
-                                                                            (binOpChain
-                                                                                (apply [ jsonDecodeFun "field", string name, parens (apply [ jsonDecodeFun "succeed", unit ]) ])
-                                                                                piper
-                                                                                [ jsonDecodeFun "maybe"
-                                                                                , apply
-                                                                                    [ jsonDecodeFun "andThen"
-                                                                                    , lambda [ varPattern "m" ]
-                                                                                        (caseExpr (val "m")
-                                                                                            [ ( namedPattern "Just" [ varPattern "_" ], applyBinOp (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace (apiDecodeModuleName namespace) typeRef ]) piper (apply [ jsonDecodeFun "map", construct "Just" [] ]) )
-                                                                                            , ( namedPattern "Nothing" [], apply [ jsonDecodeFun "succeed", construct "Nothing" [] ] )
-                                                                                            ]
-                                                                                        )
+                                    (binOpChain
+                                        (apply [ jsonDecodeFun "succeed", apiModelConstruct namespace (apiDecodeModuleName namespace) typeName [] ])
+                                        piper
+                                        (typeDef.has
+                                            |> List.map
+                                                (\p ->
+                                                    let
+                                                        fieldDecoder name optional typeRef =
+                                                            if optional then
+                                                                parens
+                                                                    (binOpChain
+                                                                        (apply [ jsonDecodeFun "field", string name, parens (apply [ jsonDecodeFun "succeed", unit ]) ])
+                                                                        piper
+                                                                        [ jsonDecodeFun "maybe"
+                                                                        , apply
+                                                                            [ jsonDecodeFun "andThen"
+                                                                            , lambda [ varPattern "m" ]
+                                                                                (caseExpr (val "m")
+                                                                                    [ ( namedPattern "Just" [ varPattern "_" ], applyBinOp (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace (apiDecodeModuleName namespace) typeRef ]) piper (apply [ jsonDecodeFun "map", construct "Just" [] ]) )
+                                                                                    , ( namedPattern "Nothing" [], apply [ jsonDecodeFun "succeed", construct "Nothing" [] ] )
                                                                                     ]
-                                                                                ]
-                                                                            )
+                                                                                )
+                                                                            ]
+                                                                        ]
+                                                                    )
 
-                                                                    else
-                                                                        parens (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace (apiDecodeModuleName namespace) typeRef ])
-                                                            in
+                                                            else
+                                                                parens (apply [ jsonDecodeFun "field", string name, typeDecoderVal namespace (apiDecodeModuleName namespace) typeRef ])
+
+                                                        typeFieldDecoder =
                                                             case p of
                                                                 StringProperty name { optional } ->
                                                                     fieldDecoder name optional StringTypeRef
@@ -689,8 +682,9 @@ decodeFile namespace spec =
 
                                                                 CustomProperty name { optional, is } ->
                                                                     fieldDecoder name optional (CustomTypeRef is)
-                                                        )
-                                               )
+                                                    in
+                                                    apply [ fun "andMap", typeFieldDecoder ]
+                                                )
                                         )
                                     )
                                 ]
@@ -771,6 +765,8 @@ decodeFile namespace spec =
                                 ]
                     )
                 |> List.foldl (++) []
+             )
+                ++ [ funDecl (emptyDocComment |> markdown "Applicative map" |> Just) Nothing "andMap" [] (apply [ fqFun [ "Json", "Decode" ] "map2", fun "(|>)" ]) ]
             )
             Nothing
     }

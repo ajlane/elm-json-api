@@ -15,11 +15,10 @@ import Url.Interpolate
 -}
 updateDraft : Json.Decode.Decoder Api.Model.UpdateDraft
 updateDraft =
-    Json.Decode.map3
-        Api.Model.UpdateDraft
-        (Json.Decode.field "base" Json.Decode.int)
-        (Json.Decode.field "body" Json.Decode.string)
-        (Json.Decode.field "title" Json.Decode.string)
+    Json.Decode.succeed Api.Model.UpdateDraft
+        |> andMap (Json.Decode.field "base" Json.Decode.int)
+        |> andMap (Json.Decode.field "body" Json.Decode.string)
+        |> andMap (Json.Decode.field "title" Json.Decode.string)
 
 
 updateArticleResponse =
@@ -74,12 +73,11 @@ searchResponse =
 -}
 searchHit : Json.Decode.Decoder Api.Model.SearchHit
 searchHit =
-    Json.Decode.map4
-        Api.Model.SearchHit
-        (Json.Decode.field "href" articleUrl)
-        (Json.Decode.field "id" Json.Decode.string)
-        (Json.Decode.field "snippet" Json.Decode.string)
-        (Json.Decode.field "title" Json.Decode.string)
+    Json.Decode.succeed Api.Model.SearchHit
+        |> andMap (Json.Decode.field "href" articleUrl)
+        |> andMap (Json.Decode.field "id" Json.Decode.string)
+        |> andMap (Json.Decode.field "snippet" Json.Decode.string)
+        |> andMap (Json.Decode.field "title" Json.Decode.string)
 
 
 {-| Decodes JSON as NewDraft values.
@@ -88,11 +86,10 @@ searchHit =
 -}
 newDraft : Json.Decode.Decoder Api.Model.NewDraft
 newDraft =
-    Json.Decode.map3
-        Api.Model.NewDraft
-        (Json.Decode.field "base" Json.Decode.int)
-        (Json.Decode.field "body" Json.Decode.string)
-        (Json.Decode.field "title" Json.Decode.string)
+    Json.Decode.succeed Api.Model.NewDraft
+        |> andMap (Json.Decode.field "base" Json.Decode.int)
+        |> andMap (Json.Decode.field "body" Json.Decode.string)
+        |> andMap (Json.Decode.field "title" Json.Decode.string)
 
 
 newArticleResponse =
@@ -119,11 +116,10 @@ indexUrl =
 -}
 index : Json.Decode.Decoder Api.Model.Index
 index =
-    Json.Decode.map3
-        Api.Model.Index
-        (Json.Decode.field "featured" article)
-        (Json.Decode.field "search" searchUrl)
-        (Json.Decode.field "self" indexUrl)
+    Json.Decode.succeed Api.Model.Index
+        |> andMap (Json.Decode.field "featured" article)
+        |> andMap (Json.Decode.field "search" searchUrl)
+        |> andMap (Json.Decode.field "self" indexUrl)
 
 
 articleUrl =
@@ -136,31 +132,40 @@ articleUrl =
 -}
 article : Json.Decode.Decoder Api.Model.Article
 article =
-    Json.Decode.map6
-        Api.Model.Article
-        (Json.Decode.field "body" Json.Decode.string)
-        (Json.Decode.field
-            "created"
-            (Json.Decode.map Time.millisToPosix Json.Decode.int)
-        )
-        (Json.Decode.field "self" articleUrl)
-        (Json.Decode.field "title" Json.Decode.string)
-        (Json.Decode.field "updated" (Json.Decode.succeed ())
-            |> Json.Decode.maybe
-            |> Json.Decode.andThen
-                (\m ->
-                    case m of
-                        Just _ ->
-                            Json.Decode.field
-                                "updated"
-                                (Json.Decode.map
-                                    Time.millisToPosix
-                                    Json.Decode.int
-                                )
-                                |> Json.Decode.map Just
+    Json.Decode.succeed Api.Model.Article
+        |> andMap (Json.Decode.field "body" Json.Decode.string)
+        |> andMap
+            (Json.Decode.field
+                "created"
+                (Json.Decode.map Time.millisToPosix Json.Decode.int)
+            )
+        |> andMap (Json.Decode.field "self" articleUrl)
+        |> andMap (Json.Decode.field "title" Json.Decode.string)
+        |> andMap
+            (Json.Decode.field "updated" (Json.Decode.succeed ())
+                |> Json.Decode.maybe
+                |> Json.Decode.andThen
+                    (\m ->
+                        case m of
+                            Just _ ->
+                                Json.Decode.field
+                                    "updated"
+                                    (Json.Decode.map
+                                        Time.millisToPosix
+                                        Json.Decode.int
+                                    )
+                                    |> Json.Decode.map Just
 
-                        Nothing ->
-                            Json.Decode.succeed Nothing
-                )
-        )
-        (Json.Decode.field "version" Json.Decode.int)
+                            Nothing ->
+                                Json.Decode.succeed Nothing
+                    )
+            )
+        |> andMap (Json.Decode.field "version" Json.Decode.int)
+
+
+{-| Applicative map
+
+
+-}
+andMap =
+    Json.Decode.map2 (|>)
