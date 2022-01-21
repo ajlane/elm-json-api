@@ -14,6 +14,7 @@ jobs:
           key: npm-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-
       - run: npm ci --ignore-scripts
+      - run: sleep 1  # Wait to allow the install to flush files to disk. Otherwise we get "Text file busy" when elm runs.
       - run: npm run build
       - run: npm link
       - run: npm run example
