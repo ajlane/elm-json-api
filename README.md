@@ -1,5 +1,7 @@
 # Seed API
 
+![build status](https://github.com/ajlane/seed-api/actions/workflows/build.yml/badge.svg?branch=master)
+
 An Elm code generator for JSON APIs.
 
 Generates types and functions for working with a service defined by a simple interface spec.
