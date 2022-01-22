@@ -22,6 +22,7 @@
   "devDependencies": {
     "elm": "^0.19.1-5",
     "elm-webpack-loader": "^8.0.0",
+    "elm-test": "^0.19.1-revision7",
     "webpack": "^5.38.1",
     "webpack-cli": "^4.7.0",
     "webpack-shebang-plugin": "^1.1.6"
