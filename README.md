@@ -122,7 +122,6 @@ It works, but it isn't finished yet. Outstanding work includes:
 - [ ] Add support for a key-value type (or decide that lists of key-value pairs are good enough)
 - [ ] Add a feature to check whether two different versions of a spec are compatible
 - [ ] Consider adding a namespace URI/root wrapper to serialised messages so that they can be decoded without knowing which type they are ahead of time.
-- [ ] Fix the github actions so that the test pipeline can run automatically again
 
 ## What about the server-side?
 
