@@ -9,7 +9,7 @@
   "scripts": {
     "build": "webpack",
     "example": "seed-api -o example/src -s example/api.spec.yaml",
-    "test": "elm-test && cd example && elm-test"
+    "test": "npx elm-test && cd example && npx elm-test"
   },
   "preferGlobal": true,
   "bin": {
