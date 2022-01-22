@@ -1,6 +1,6 @@
 # Seed API
 
-![build status](https://github.com/ajlane/seed-api/actions/workflows/build.yml/badge.svg?branch=master)
+[![build status](https://github.com/ajlane/seed-api/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/ajlane/seed-api/actions/workflows/build.yml)
 
 An Elm code generator for JSON APIs.
 
